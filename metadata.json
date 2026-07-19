@@ -1,0 +1,6 @@
+{
+  "name": "Numeraverse",
+  "description": "Petualangan Besar Dunia Numerasi - Game edukasi matematika interaktif untuk siswa SD kelas 1-6 dengan petualangan 8 dunia dan pertarungan Bos Akhir.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

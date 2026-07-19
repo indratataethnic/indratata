@@ -1,0 +1,74 @@
+{
+  "collections": {
+    "users": {
+      "description": "Menyimpan data profil lengkap dan progres petualangan pemain Numeraverse",
+      "fields": {
+        "id": {
+          "type": "string",
+          "description": "UID pengguna unik dari Firebase Authentication"
+        },
+        "name": {
+          "type": "string",
+          "description": "Nama ksatria matematika/pahlawan"
+        },
+        "grade": {
+          "type": "number",
+          "description": "Kelas sekolah pengguna (1 sampai 6)"
+        },
+        "avatar": {
+          "type": "string",
+          "description": "ID preset avatar yang dipilih (niko, rumi, sora, kiko)"
+        },
+        "xp": {
+          "type": "number",
+          "description": "Experience points untuk menaikkan level"
+        },
+        "level": {
+          "type": "number",
+          "description": "Level pahlawan saat ini"
+        },
+        "coins": {
+          "type": "number",
+          "description": "Jumlah koin emas saat ini"
+        },
+        "lives": {
+          "type": "number",
+          "description": "Jumlah nyawa pahlawan saat ini (maksimum 5)"
+        },
+        "lastLifeRegenTime": {
+          "type": "number",
+          "description": "Timestamp regenerasi nyawa terakhir"
+        },
+        "unlockedWorlds": {
+          "type": "array",
+          "description": "Daftar ID dunia yang sudah terbuka untuk pemain"
+        },
+        "completedLevels": {
+          "type": "map",
+          "description": "Map status level yang telah diselesaikan (levelId: bintang)"
+        },
+        "badges": {
+          "type": "array",
+          "description": "Daftar lencana prestasi yang berhasil diraih pemain"
+        },
+        "lastPlayed": {
+          "type": "number",
+          "description": "Timestamp terakhir kali pengguna memainkan game"
+        }
+      }
+    },
+    "analytics": {
+      "description": "Menyimpan data statistik global seperti jumlah tayangan dan jumlah permainan",
+      "fields": {
+        "views": {
+          "type": "number",
+          "description": "Jumlah total halaman Numeraverse dibuka/dilihat"
+        },
+        "plays": {
+          "type": "number",
+          "description": "Jumlah total sesi permainan atau level diselesaikan/dimainkan"
+        }
+      }
+    }
+  }
+}
