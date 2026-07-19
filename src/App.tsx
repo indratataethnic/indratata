@@ -213,7 +213,8 @@ export default function App() {
     earnedCoins: number, 
     starsEarned: number, 
     scoreEarned: number,
-    unlockedBadges: string[]
+    unlockedBadges: string[],
+    newAnsweredIds?: string[]
   ) => {
     if (!profile || activeWorldId === null || activeLevelId === null) return;
 
@@ -241,6 +242,54 @@ export default function App() {
       ...currentHighScores,
       [levelKey]: bestHighScore
     };
+
+    // Calculate competency mastery updates (Mastery Learning)
+    const competenciesMap: { [key: number]: string } = {
+      1: "Operasi Bilangan Bulat",
+      2: "Aljabar dan Pola",
+      3: "Pecahan",
+      4: "Pengukuran dan Geometri",
+      5: "Geometri Bangun Ruang",
+      6: "Analisis Data dan Peluang",
+      7: "Berpikir Komputasional",
+      8: "Penalaran Tingkat Tinggi"
+    };
+
+    const compName = competenciesMap[activeWorldId] || "Operasi Bilangan Bulat";
+    const currentMasteryMap = profile.competencyMastery || {};
+    const currentMastery = currentMasteryMap[compName] || "Belum Belajar";
+    let newMastery: 'Belum Belajar' | 'Sedang Belajar' | 'Mulai Menguasai' | 'Menguasai' | 'Mahir' = currentMastery;
+
+    if (starsEarned === 3) {
+      if (currentMastery === "Belum Belajar" || currentMastery === "Sedang Belajar") {
+        newMastery = "Mulai Menguasai";
+      } else if (currentMastery === "Mulai Menguasai") {
+        newMastery = "Menguasai";
+      } else {
+        newMastery = "Mahir";
+      }
+    } else if (starsEarned === 2) {
+      if (currentMastery === "Belum Belajar") {
+        newMastery = "Sedang Belajar";
+      } else if (currentMastery === "Sedang Belajar") {
+        newMastery = "Mulai Menguasai";
+      } else if (currentMastery === "Mulai Menguasai" || currentMastery === "Menguasai") {
+        newMastery = "Menguasai";
+      }
+    } else {
+      if (currentMastery === "Belum Belajar") {
+        newMastery = "Sedang Belajar";
+      }
+    }
+
+    const updatedCompetencyMastery = {
+      ...currentMasteryMap,
+      [compName]: newMastery
+    };
+
+    // Update answered question IDs
+    const currentAnswered = profile.answeredQuestionIds || [];
+    const updatedAnsweredIds = Array.from(new Set([...currentAnswered, ...(newAnsweredIds || [])]));
 
     // Calculate XP and level-up mechanics
     let newXp = profile.xp + earnedXp;
@@ -299,6 +348,8 @@ export default function App() {
       dailyXpRecord: updatedDaily,
       weeklyXpRecord: updatedWeekly,
       monthlyXpRecord: updatedMonthly,
+      competencyMastery: updatedCompetencyMastery,
+      answeredQuestionIds: updatedAnsweredIds,
       lastPlayed: Date.now()
     };
 

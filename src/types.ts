@@ -23,6 +23,8 @@ export interface PlayerProfile {
   dailyXpRecord?: { [dayKey: string]: number }; // e.g. { "2026-07-19": 150 }
   weeklyXpRecord?: { [weekKey: string]: number }; // e.g. { "2026-W29": 450 }
   monthlyXpRecord?: { [monthKey: string]: number }; // e.g. { "2026-07": 1200 }
+  competencyMastery?: { [competencyName: string]: 'Belum Belajar' | 'Sedang Belajar' | 'Mulai Menguasai' | 'Menguasai' | 'Mahir' };
+  answeredQuestionIds?: string[]; // list of completed question ids to prevent repeating
 }
 
 export type QuestionType = 'multiple-choice' | 'text-input' | 'sorting' | 'grid-puzzle' | 'true-false';
@@ -44,8 +46,11 @@ export interface Question {
   imageUrl?: string;
   audioUrl?: string;
   videoUrl?: string;
-  // For visual or grid puzzles
   gridData?: any; 
+  fase?: 'A' | 'B' | 'C'; // Fase A: Kelas 1-2, Fase B: Kelas 3-4, Fase C: Kelas 5-6
+  competency?: string; // e.g., "Operasi Hitung", "Geometri", "Aljabar", etc.
+  subCompetence?: string; // e.g., "Penjumlahan Cacah", "Pola Geometri", etc.
+  difficulty?: 'mudah' | 'sedang' | 'sulit';
 }
 
 export interface World {

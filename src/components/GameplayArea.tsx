@@ -5,7 +5,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Question, PlayerProfile } from '../types';
-import { WORLDS, QUESTION_BANK, generateDynamicQuestion } from '../questions';
+import { WORLDS, generateDynamicQuestion } from '../questions';
+import { generateLevelQuestionPool } from '../utils/questionGenerator';
 import { 
   Heart, Coins, Sparkles, HelpCircle, ArrowRight, CheckCircle, 
   XCircle, Trophy, Home, Compass, RotateCcw, Award, Clock, Flame, ShieldAlert
@@ -22,7 +23,8 @@ interface GameplayAreaProps {
     earnedCoins: number, 
     starsEarned: number, 
     scoreEarned: number,
-    unlockedBadges: string[]
+    unlockedBadges: string[],
+    newAnsweredIds?: string[]
   ) => void;
   onLevelFail: () => void;
   onBackToMap: () => void;
@@ -37,6 +39,9 @@ export const GameplayArea: React.FC<GameplayAreaProps> = ({
   onBackToMap
 }) => {
   const world = WORLDS.find(w => w.id === worldId) || WORLDS[0];
+
+  // Pool of 100 questions for this world/level/grade
+  const levelPoolRef = useRef<Question[]>([]);
 
   // Load appropriate questions
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -80,41 +85,42 @@ export const GameplayArea: React.FC<GameplayAreaProps> = ({
     difficulty: 'mudah' | 'sedang' | 'sulit',
     excludeIds: string[]
   ): Question => {
-    // Saring database utama hanya untuk kelas yang dipilih pengguna
-    const gradeFiltered = QUESTION_BANK.filter(
-      q => q.worldId === worldId && 
-           q.grade === profile.grade && 
-           !excludeIds.includes(q.id)
-    );
-
-    let pool: Question[] = [];
-
-    if (difficulty === 'sulit') {
-      // Filter untuk soal HOTS atau Komputasional di kelas yang sama
-      pool = gradeFiltered.filter(q => q.isHots || q.isComputationalThinking || (q.points && q.points >= 15));
-      if (pool.length === 0) {
-        pool = gradeFiltered;
-      }
-    } else if (difficulty === 'mudah') {
-      // Filter untuk soal dengan poin rendah atau bukan HOTS di kelas yang sama
-      pool = gradeFiltered.filter(q => !q.isHots && !q.isComputationalThinking && (q.points && q.points <= 10));
-      if (pool.length === 0) {
-        pool = gradeFiltered;
-      }
-    } else {
-      // Sedang
-      pool = gradeFiltered;
+    // Pastikan pool 100 soal terisi
+    if (levelPoolRef.current.length === 0) {
+      levelPoolRef.current = generateLevelQuestionPool(profile.grade, worldId, levelId);
     }
 
-    // Jika bank soal statis kehabisan soal untuk kelas ini, buatlah soal dinamis prosedural yang dijamin sesuai kelas!
-    if (pool.length === 0) {
-      const dynamicSuffix = Math.floor(Math.random() * 1000000).toString();
-      const dynamicQuestion = generateDynamicQuestion(worldId, profile.grade, levelId, dynamicSuffix);
-      return dynamicQuestion;
+    const poolOf100 = levelPoolRef.current;
+
+    // Filter berdasarkan tingkat kesulitan adaptif
+    let filtered = poolOf100.filter(q => q.difficulty === difficulty);
+    if (filtered.length === 0) {
+      filtered = poolOf100; // fallback jika kesulitan kosong
     }
 
-    const randomIndex = Math.floor(Math.random() * pool.length);
-    return pool[randomIndex];
+    // Saring agar tidak berulang dalam sesi yang sama (excludeIds)
+    filtered = filtered.filter(q => !excludeIds.includes(q.id));
+
+    // Prioritaskan soal yang belum pernah dikerjakan pemain berdasarkan profile.answeredQuestionIds
+    const unanswered = filtered.filter(q => !profile.answeredQuestionIds?.includes(q.id));
+
+    let finalSelectionPool = unanswered;
+    if (unanswered.length === 0) {
+      // Jika seluruh soal telah selesai, acak kembali dengan urutan berbeda (gunakan kembali soal lama)
+      finalSelectionPool = filtered;
+    }
+
+    if (finalSelectionPool.length === 0) {
+      // Jika kehabisan soal yang belum dimainkan di sesi aktif, ambil soal apa saja di luar yang sedang aktif
+      finalSelectionPool = poolOf100.filter(q => !excludeIds.includes(q.id));
+    }
+
+    if (finalSelectionPool.length === 0) {
+      finalSelectionPool = poolOf100;
+    }
+
+    const randomIndex = Math.floor(Math.random() * finalSelectionPool.length);
+    return finalSelectionPool[randomIndex];
   };
 
   // Load questions for world and level
@@ -125,6 +131,9 @@ export const GameplayArea: React.FC<GameplayAreaProps> = ({
     setWrongCount(0);
     setAdaptiveAlert(null);
     setForceHint(false);
+
+    // Bangun 100 soal deterministik khusus untuk tingkat kelas, dunia, dan level ini
+    levelPoolRef.current = generateLevelQuestionPool(profile.grade, worldId, levelId);
 
     // Ambil soal pertama (Difficulty: Sedang / Sesuai tingkat kelas)
     const firstQ = getAdaptiveQuestion('sedang', []);
@@ -410,12 +419,17 @@ export const GameplayArea: React.FC<GameplayAreaProps> = ({
   const handleCompleteCollect = () => {
     if (!completionSummary) return;
     sound.playLevelUp();
+    
+    // Ambil daftar id soal yang sudah dikerjakan dalam sesi ini
+    const playedIds = questions.map(q => q.id);
+
     onLevelComplete(
       completionSummary.finalXp,
       completionSummary.finalCoins,
       completionSummary.stars,
       completionSummary.finalScore,
-      completionSummary.newUnlockedBadges
+      completionSummary.newUnlockedBadges,
+      playedIds
     );
   };
 

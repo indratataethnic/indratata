@@ -58,8 +58,60 @@ export const WorldMap: React.FC<WorldMapProps> = ({ profile, onSelectLevel, onEn
     (acc, val) => acc + (val?.length || 0), 0
   );
 
-  // Boss unlocks after completing at least 4 levels
-  const isBossUnlocked = totalLevelsCompleted >= 4 || profile.level >= 5;
+  const completedLevelKeys = Object.keys(profile.levelStars || {});
+  const totalStars = (Object.values(profile.levelStars || {}) as number[]).reduce((acc: number, val: number) => acc + val, 0);
+  
+  // Calculate avg star accuracy (3 stars = 100%, 2 stars = 80%, etc.)
+  const accuracyPercent = completedLevelKeys.length > 0 
+    ? Math.round(((totalStars / (completedLevelKeys.length * 3)) * 100)) 
+    : 0;
+
+  // Let's check the core 5 criteria for final boss
+  const checklist = {
+    coreMissions: {
+      label: "Level 1, 2, 3 Selesai di salah satu Dunia Utama",
+      satisfied: WORLDS.some(w => {
+        const completed = profile.completedLevels[w.id] || [];
+        return completed.includes(1) && completed.includes(2) && completed.includes(3);
+      }),
+      current: WORLDS.some(w => {
+        const completed = profile.completedLevels[w.id] || [];
+        return completed.includes(1) && completed.includes(2) && completed.includes(3);
+      }) ? "Lengkap" : "Belum"
+    },
+    miniBoss: {
+      label: "Misi Mini Boss (Level 4) Selesai di salah satu Dunia",
+      satisfied: WORLDS.some(w => {
+        const completed = profile.completedLevels[w.id] || [];
+        return completed.includes(4);
+      }),
+      current: WORLDS.some(w => {
+        const completed = profile.completedLevels[w.id] || [];
+        return completed.includes(4);
+      }) ? "Selesai" : "Belum"
+    },
+    accuracy: {
+      label: "Rata-rata Akurasi Sesi Minimal 80%",
+      satisfied: completedLevelKeys.length > 0 && accuracyPercent >= 80,
+      current: `${accuracyPercent}%`
+    },
+    stars: {
+      label: "Total Mengumpulkan Minimal 12 Bintang Emas",
+      satisfied: totalStars >= 12,
+      current: `${totalStars}/12`
+    },
+    competency: {
+      label: "Minimal 1 Kompetensi Utama berstatus 'Menguasai' / 'Mahir'",
+      satisfied: Object.values(profile.competencyMastery || {}).some(status => status === 'Menguasai' || status === 'Mahir'),
+      current: Object.values(profile.competencyMastery || {}).some(status => status === 'Menguasai' || status === 'Mahir') ? "Tercapai" : "Belum"
+    }
+  };
+
+  const isBossUnlocked = checklist.coreMissions.satisfied &&
+                         checklist.miniBoss.satisfied &&
+                         checklist.accuracy.satisfied &&
+                         checklist.stars.satisfied &&
+                         checklist.competency.satisfied;
 
   const handleWorldClick = (world: World) => {
     sound.playClick();
@@ -301,16 +353,7 @@ export const WorldMap: React.FC<WorldMapProps> = ({ profile, onSelectLevel, onEn
 
       {/* FINAL BOSS CASTLE AREA */}
       <div className="max-w-xl mx-auto">
-        <button
-          id="boss-battle-gate-btn"
-          onClick={handleBossClick}
-          className={`w-full text-center rounded-3xl border-4 p-6 flex flex-col items-center justify-center relative overflow-hidden transition-all duration-300 cursor-pointer ${
-            isBossUnlocked
-              ? 'bg-gradient-to-b from-indigo-950 to-slate-900 border-rose-500 hover:scale-[1.03] shadow-[0_12px_30px_rgba(239,68,68,0.25)] hover:shadow-[0_20px_40px_rgba(239,68,68,0.4)] group'
-              : 'bg-slate-100 border-slate-300 opacity-60'
-          }`}
-        >
-          {/* Animated pulsing glow for boss */}
+        <div className="bg-slate-900 border-4 border-rose-500 rounded-3xl p-6 shadow-xl relative overflow-hidden text-center mb-8">
           {isBossUnlocked && (
             <div className="absolute inset-0 bg-rose-500/10 animate-pulse mix-blend-color-dodge pointer-events-none" />
           )}
@@ -321,29 +364,107 @@ export const WorldMap: React.FC<WorldMapProps> = ({ profile, onSelectLevel, onEn
             </span>
           </div>
 
-          <h3 className={`text-xl md:text-2xl font-black ${isBossUnlocked ? 'text-rose-400' : 'text-slate-500'}`}>
+          <h3 className="text-xl md:text-2xl font-black text-rose-400">
             ISTANA RAJA DISTRAKTOR
           </h3>
           
-          <p className={`text-xs font-semibold max-w-sm mt-1.5 ${isBossUnlocked ? 'text-slate-300' : 'text-slate-400'}`}>
-            {isBossUnlocked 
-              ? 'Kalahkan Bos Akhir untuk menghentikan kekacauan numerasi dan menyelamatkan Numeraverse!' 
-              : 'Pintu Gerbang terkunci! Selesaikan minimal 4 misi di dunia mana pun untuk membuka Istana.'
-            }
+          <p className="text-xs font-semibold text-slate-300 max-w-sm mx-auto mt-1.5 mb-6">
+            Selesaikan seluruh syarat di bawah untuk membuka segel gerbang Istana Raja Distraktor!
           </p>
 
-          <div className="mt-5 w-full">
-            {isBossUnlocked ? (
-              <span className="inline-flex items-center gap-2 bg-gradient-to-r from-rose-500 to-red-600 text-white text-xs md:text-sm font-black px-6 py-3 rounded-2xl border-b-4 border-red-800 hover:brightness-110 transition-all uppercase tracking-wider">
-                ⚔️ Duel Bos Akhir sekarang!
-              </span>
-            ) : (
-              <div className="inline-flex items-center gap-1.5 bg-slate-200 text-slate-500 text-xs font-black px-4 py-2 rounded-xl">
-                <Lock className="w-4 h-4" /> Progress Misi Anda: {totalLevelsCompleted}/4
+          {/* Checklist Requirements UI */}
+          <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 text-left space-y-3 mb-6">
+            <h4 className="text-xs font-black text-rose-500 uppercase tracking-wider mb-2">Syarat Gerbang Istana:</h4>
+            
+            {/* Req 1: Core levels */}
+            <div className="flex items-center justify-between text-xs font-bold">
+              <div className="flex items-center gap-2 text-slate-300">
+                <span className={checklist.coreMissions.satisfied ? "text-green-400 font-extrabold text-sm" : "text-slate-600 text-sm"}>
+                  {checklist.coreMissions.satisfied ? "✔" : "🔒"}
+                </span>
+                <span className={checklist.coreMissions.satisfied ? "text-slate-300 font-bold" : "text-slate-500 font-medium"}>
+                  {checklist.coreMissions.label}
+                </span>
               </div>
-            )}
+              <span className={`px-2 py-0.5 rounded-full text-[10px] ${checklist.coreMissions.satisfied ? "bg-green-500/20 text-green-400" : "bg-slate-800 text-slate-500"}`}>
+                {checklist.coreMissions.current}
+              </span>
+            </div>
+
+            {/* Req 2: Mini Boss */}
+            <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+              <div className="flex items-center gap-2">
+                <span className={checklist.miniBoss.satisfied ? "text-green-400 font-extrabold text-sm" : "text-slate-600 text-sm"}>
+                  {checklist.miniBoss.satisfied ? "✔" : "🔒"}
+                </span>
+                <span className={checklist.miniBoss.satisfied ? "text-slate-300 font-bold" : "text-slate-500 font-medium"}>
+                  {checklist.miniBoss.label}
+                </span>
+              </div>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] ${checklist.miniBoss.satisfied ? "bg-green-500/20 text-green-400" : "bg-slate-800 text-slate-500"}`}>
+                {checklist.miniBoss.current}
+              </span>
+            </div>
+
+            {/* Req 3: Accuracy */}
+            <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+              <div className="flex items-center gap-2">
+                <span className={checklist.accuracy.satisfied ? "text-green-400 font-extrabold text-sm" : "text-slate-600 text-sm"}>
+                  {checklist.accuracy.satisfied ? "✔" : "🔒"}
+                </span>
+                <span className={checklist.accuracy.satisfied ? "text-slate-300 font-bold" : "text-slate-500 font-medium"}>
+                  {checklist.accuracy.label}
+                </span>
+              </div>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] ${checklist.accuracy.satisfied ? "bg-green-500/20 text-green-400" : "bg-slate-800 text-slate-500"}`}>
+                {checklist.accuracy.current}
+              </span>
+            </div>
+
+            {/* Req 4: Stars */}
+            <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+              <div className="flex items-center gap-2">
+                <span className={checklist.stars.satisfied ? "text-green-400 font-extrabold text-sm" : "text-slate-600 text-sm"}>
+                  {checklist.stars.satisfied ? "✔" : "🔒"}
+                </span>
+                <span className={checklist.stars.satisfied ? "text-slate-300 font-bold" : "text-slate-500 font-medium"}>
+                  {checklist.stars.label}
+                </span>
+              </div>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] ${checklist.stars.satisfied ? "bg-green-500/20 text-green-400" : "bg-slate-800 text-slate-500"}`}>
+                {checklist.stars.current}
+              </span>
+            </div>
+
+            {/* Req 5: Competency */}
+            <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+              <div className="flex items-center gap-2">
+                <span className={checklist.competency.satisfied ? "text-green-400 font-extrabold text-sm" : "text-slate-600 text-sm"}>
+                  {checklist.competency.satisfied ? "✔" : "🔒"}
+                </span>
+                <span className={checklist.competency.satisfied ? "text-slate-300 font-bold" : "text-slate-500 font-medium"}>
+                  {checklist.competency.label}
+                </span>
+              </div>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] ${checklist.competency.satisfied ? "bg-green-500/20 text-green-400" : "bg-slate-800 text-slate-500"}`}>
+                {checklist.competency.current}
+              </span>
+            </div>
           </div>
-        </button>
+
+          <button
+            id="boss-battle-gate-btn"
+            onClick={handleBossClick}
+            disabled={!isBossUnlocked}
+            className={`w-full py-4 rounded-2xl font-black text-sm md:text-base uppercase tracking-wider border-b-4 transition-all duration-300 cursor-pointer ${
+              isBossUnlocked
+                ? 'bg-gradient-to-r from-rose-500 to-red-600 text-white border-red-800 hover:scale-[1.03] active:scale-95 shadow-[0_4px_15px_rgba(239,68,68,0.4)]'
+                : 'bg-slate-800 text-slate-500 border-slate-950 cursor-not-allowed opacity-50'
+            }`}
+          >
+            {isBossUnlocked ? "⚔️ Duel Bos Akhir sekarang!" : "🔒 Gerbang Istana Tersegel"}
+          </button>
+        </div>
       </div>
     </div>
   );
