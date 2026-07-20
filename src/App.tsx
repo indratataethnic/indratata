@@ -86,7 +86,11 @@ export default function App() {
             lives: result.lives,
             lastLifeRegenTime: result.lastLifeRegenTime
           };
-          localStorage.setItem('numeraverse_player_profile', JSON.stringify(updated));
+          try {
+            localStorage.setItem('numeraverse_player_profile', JSON.stringify(updated));
+          } catch (e) {
+            console.warn('Gagal menyimpan cache profil lokal:', e);
+          }
           savePlayerProfile(updated).catch(e => console.error(e));
           return updated;
         }

@@ -8,8 +8,15 @@ import { db } from '../firebase';
 import { PlayerProfile, Question } from '../types';
 
 // State lokal untuk menyimpan webAppUrl dan spreadsheetLink setelah di-load
-let cachedWebAppUrl: string | null = localStorage.getItem('numeraverse_sheets_url');
-let cachedSpreadsheetLink: string | null = localStorage.getItem('numeraverse_spreadsheet_link');
+let cachedWebAppUrl: string | null = null;
+let cachedSpreadsheetLink: string | null = null;
+
+try {
+  cachedWebAppUrl = localStorage.getItem('numeraverse_sheets_url');
+  cachedSpreadsheetLink = localStorage.getItem('numeraverse_spreadsheet_link');
+} catch (e) {
+  console.warn('LocalStorage tidak tersedia saat memuat sheets.ts:', e);
+}
 
 export interface SheetsConfig {
   webAppUrl: string | null;
@@ -17,7 +24,7 @@ export interface SheetsConfig {
 }
 
 /**
- * Mengambil konfigurasi Google Sheets lengkap dari Firestore & lokal cache
+ * Mengambil konfigurasi Google Sheets lengkap dari Firestore & lokal cache secara aman
  */
 export async function getSheetsConfig(): Promise<SheetsConfig> {
   let webAppUrl = cachedWebAppUrl;
@@ -31,21 +38,32 @@ export async function getSheetsConfig(): Promise<SheetsConfig> {
       if (data.webAppUrl) {
         webAppUrl = data.webAppUrl;
         cachedWebAppUrl = data.webAppUrl;
-        localStorage.setItem('numeraverse_sheets_url', data.webAppUrl);
+        try {
+          localStorage.setItem('numeraverse_sheets_url', data.webAppUrl);
+        } catch (e) {}
       }
       if (data.spreadsheetLink) {
         spreadsheetLink = data.spreadsheetLink;
         cachedSpreadsheetLink = data.spreadsheetLink;
-        localStorage.setItem('numeraverse_spreadsheet_link', data.spreadsheetLink);
+        try {
+          localStorage.setItem('numeraverse_spreadsheet_link', data.spreadsheetLink);
+        } catch (e) {}
       }
     }
   } catch (error) {
     console.warn('Gagal mengambil konfigurasi Google Sheets dari Firestore:', error);
   }
 
+  let localUrl: string | null = null;
+  let localLink: string | null = null;
+  try {
+    localUrl = localStorage.getItem('numeraverse_sheets_url');
+    localLink = localStorage.getItem('numeraverse_spreadsheet_link');
+  } catch (e) {}
+
   return {
-    webAppUrl: webAppUrl || localStorage.getItem('numeraverse_sheets_url'),
-    spreadsheetLink: spreadsheetLink || localStorage.getItem('numeraverse_spreadsheet_link'),
+    webAppUrl: webAppUrl || localUrl,
+    spreadsheetLink: spreadsheetLink || localLink,
   };
 }
 
@@ -58,7 +76,7 @@ export async function getSheetsUrl(): Promise<string | null> {
 }
 
 /**
- * Menyimpan konfigurasi Google Sheets lengkap ke Firestore dan Cache Lokal
+ * Menyimpan konfigurasi Google Sheets lengkap ke Firestore dan Cache Lokal secara aman
  */
 export async function saveSheetsConfig(config: SheetsConfig): Promise<void> {
   const webAppUrl = config.webAppUrl?.trim() || null;
@@ -67,11 +85,15 @@ export async function saveSheetsConfig(config: SheetsConfig): Promise<void> {
   cachedWebAppUrl = webAppUrl;
   cachedSpreadsheetLink = spreadsheetLink;
 
-  if (webAppUrl) localStorage.setItem('numeraverse_sheets_url', webAppUrl);
-  else localStorage.removeItem('numeraverse_sheets_url');
+  try {
+    if (webAppUrl) localStorage.setItem('numeraverse_sheets_url', webAppUrl);
+    else localStorage.removeItem('numeraverse_sheets_url');
+  } catch (e) {}
 
-  if (spreadsheetLink) localStorage.setItem('numeraverse_spreadsheet_link', spreadsheetLink);
-  else localStorage.removeItem('numeraverse_spreadsheet_link');
+  try {
+    if (spreadsheetLink) localStorage.setItem('numeraverse_spreadsheet_link', spreadsheetLink);
+    else localStorage.removeItem('numeraverse_spreadsheet_link');
+  } catch (e) {}
 
   try {
     const configRef = doc(db, 'config', 'sheets');
@@ -83,7 +105,7 @@ export async function saveSheetsConfig(config: SheetsConfig): Promise<void> {
 }
 
 /**
- * Menyimpan Google Sheets Web App URL ke Firestore dan Cache Lokal
+ * Menyimpan Google Sheets Web App URL ke Firestore dan Cache Lokal secara aman
  */
 export async function saveSheetsUrl(url: string): Promise<void> {
   await saveSheetsConfig({

@@ -67,8 +67,20 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onBack }) => {
   const [successNotification, setSuccessNotification] = useState<string | null>(null);
 
   // Google Sheets integration state
-  const [sheetsUrl, setSheetsUrlState] = useState(() => localStorage.getItem('numeraverse_sheets_url') || '');
-  const [spreadsheetLink, setSpreadsheetLinkState] = useState(() => localStorage.getItem('numeraverse_spreadsheet_link') || '');
+  const [sheetsUrl, setSheetsUrlState] = useState(() => {
+    try {
+      return localStorage.getItem('numeraverse_sheets_url') || '';
+    } catch (e) {
+      return '';
+    }
+  });
+  const [spreadsheetLink, setSpreadsheetLinkState] = useState(() => {
+    try {
+      return localStorage.getItem('numeraverse_spreadsheet_link') || '';
+    } catch (e) {
+      return '';
+    }
+  });
   const [isTestingConfig, setIsTestingConfig] = useState(false);
   const [testStatus, setTestStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [showAppsScriptGuide, setShowAppsScriptGuide] = useState(false);
