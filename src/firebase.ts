@@ -29,7 +29,7 @@ const app = initializeApp(firebaseConfig);
 
 // Ekspor layanan Autentikasi dan Database Firestore untuk digunakan di tempat lain
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || '(default)');
 
 /**
  * Menyimpan data profil pemain ke Firestore.
