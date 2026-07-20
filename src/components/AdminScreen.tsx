@@ -715,6 +715,12 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onBack }) => {
                           sound.playClick();
                           navigator.clipboard.writeText(`// KODE GOOGLE APPS SCRIPT UNTUK SPREADSHEET NUMERAVERSE
 function doGet(e) {
+  if (!e || !e.parameter) {
+    return ContentService.createTextOutput(JSON.stringify({ 
+      success: false, 
+      message: 'Error: Jangan jalankan fungsi ini langsung dari dalam editor Google Apps Script. Fungsi doGet ini membutuhkan parameter pemicu dari aplikasi web Numeraverse. Silakan ikuti petunjuk Terapkan -> Penerapan Baru sebagai Aplikasi Web, lalu tempelkan URL-nya di Numeraverse.' 
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
   var action = e.parameter.action;
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   
@@ -768,6 +774,12 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  if (!e || !e.postData || !e.postData.contents) {
+    return ContentService.createTextOutput(JSON.stringify({ 
+      success: false, 
+      message: 'Error: Jangan jalankan fungsi ini langsung dari dalam editor Google Apps Script. Fungsi doPost ini membutuhkan data POST yang dikirim oleh aplikasi web Numeraverse.' 
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var postData = JSON.parse(e.postData.contents);
   var action = postData.action;
