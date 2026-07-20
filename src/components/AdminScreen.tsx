@@ -67,8 +67,8 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onBack }) => {
   const [successNotification, setSuccessNotification] = useState<string | null>(null);
 
   // Google Sheets integration state
-  const [sheetsUrl, setSheetsUrlState] = useState('');
-  const [spreadsheetLink, setSpreadsheetLinkState] = useState('');
+  const [sheetsUrl, setSheetsUrlState] = useState(() => localStorage.getItem('numeraverse_sheets_url') || '');
+  const [spreadsheetLink, setSpreadsheetLinkState] = useState(() => localStorage.getItem('numeraverse_spreadsheet_link') || '');
   const [isTestingConfig, setIsTestingConfig] = useState(false);
   const [testStatus, setTestStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [showAppsScriptGuide, setShowAppsScriptGuide] = useState(false);
@@ -93,8 +93,8 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onBack }) => {
     loadPlayers();
     const loadSheetsConfigData = async () => {
       const config = await getSheetsConfig();
-      if (config.webAppUrl) setSheetsUrlState(config.webAppUrl);
-      if (config.spreadsheetLink) setSpreadsheetLinkState(config.spreadsheetLink);
+      setSheetsUrlState(config.webAppUrl || '');
+      setSpreadsheetLinkState(config.spreadsheetLink || '');
     };
     loadSheetsConfigData();
   }, []);
