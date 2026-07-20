@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Sparkles, 
   Trophy, 
@@ -24,7 +24,9 @@ import {
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword,
   GoogleAuthProvider,
-  signInWithPopup
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult
 } from 'firebase/auth';
 import { auth, savePlayerProfile, getPlayerProfile } from '../firebase';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -92,6 +94,85 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onAdminLogin })
   const [adminUsername, setAdminUsername] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [adminError, setAdminError] = useState<string | null>(null);
+
+  // State untuk otomatis login Google di dalam Iframe & Tab Baru
+  const [isIframe, setIsIframe] = useState(false);
+  const [isIframeLoginOpened, setIsIframeLoginOpened] = useState(false);
+  const [isRedirectLoading, setIsRedirectLoading] = useState(false);
+  const [redirectSuccessMessage, setRedirectSuccessMessage] = useState<string | null>(null);
+
+  // Monitor parameter URL (?login_trigger=google) untuk melakukan auto-login Google via Redirect di Tab Baru
+  useEffect(() => {
+    setIsIframe(window.self !== window.top);
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const trigger = urlParams.get('login_trigger');
+
+    if (trigger === 'google') {
+      // Hanya jalankan auto-redirect login jika berada di luar iframe (top-level tab)
+      if (window.self === window.top) {
+        setIsRedirectLoading(true);
+        setErrorMessage(null);
+
+        getRedirectResult(auth)
+          .then(async (result) => {
+            if (result?.user || auth.currentUser) {
+              const loggedUser = result?.user || auth.currentUser;
+              if (loggedUser) {
+                setRedirectSuccessMessage('Masuk Berhasil! Menghubungkan ke game...');
+                
+                try {
+                  // Pastikan profil pemain terdaftar di Firestore
+                  const cloudProfile = await getPlayerProfile(loggedUser.uid);
+                  if (!cloudProfile) {
+                    const fallbackProfile: PlayerProfile = {
+                      id: loggedUser.uid,
+                      name: loggedUser.displayName ? loggedUser.displayName.substring(0, 15) : 'Pahlawan',
+                      grade: 1,
+                      avatar: 'niko',
+                      xp: 0,
+                      level: 1,
+                      coins: 25,
+                      lives: 5,
+                      lastLifeRegenTime: Date.now(),
+                      unlockedWorlds: [1, 2, 7, 8],
+                      completedLevels: {},
+                      badges: [],
+                      lastPlayed: Date.now()
+                    };
+                    await savePlayerProfile(fallbackProfile);
+                  }
+                } catch (e) {
+                  console.error('Gagal memverifikasi profil pemain pasca-redirect:', e);
+                }
+
+                // Tutup jendela/tab ini secara otomatis dalam 2 detik
+                setTimeout(() => {
+                  window.close();
+                }, 2000);
+              }
+            } else {
+              // Jika belum login, jalankan proses redirect masuk Google secara langsung
+              const provider = new GoogleAuthProvider();
+              provider.setCustomParameters({
+                prompt: 'select_account' // Sangat penting agar murid bisa memilih akun Google/Belajar.id mereka
+              });
+
+              signInWithRedirect(auth, provider).catch((error) => {
+                console.error('Redirect sign in failed:', error);
+                setErrorMessage('Gagal memulai masuk otomatis: ' + (error.message || error));
+                setIsRedirectLoading(false);
+              });
+            }
+          })
+          .catch((error) => {
+            console.error('Kesalahan getRedirectResult:', error);
+            setErrorMessage('Gagal menyelesaikan proses masuk: ' + (error.message || error));
+            setIsRedirectLoading(false);
+          });
+      }
+    }
+  }, []);
 
   const handleAdminSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -223,9 +304,28 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onAdminLogin })
    */
   const handleGoogleSignIn = async () => {
     setErrorMessage(null);
+    
+    // DETEKSI IFRAME: Jika berada di dalam iframe (misal di AI Studio preview), buka tab baru untuk menghindari blokir pihak ketiga
+    if (window.self !== window.top) {
+      sound.playClick();
+      const loginUrl = window.location.origin + window.location.pathname + '?login_trigger=google';
+      const newWindow = window.open(loginUrl, '_blank');
+      if (!newWindow) {
+        // Pop-up diblokir oleh browser
+        setErrorMessage('auth/popup-blocked');
+      } else {
+        setIsIframeLoginOpened(true);
+      }
+      return;
+    }
+
     setIsLoading(true);
     try {
       const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({
+        prompt: 'select_account' // Memudahkan murid memilih akun Google / sekolah belajar.id mereka
+      });
+      
       const userCredential = await signInWithPopup(auth, provider);
       const user = userCredential.user;
       
@@ -283,6 +383,45 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onAdminLogin })
       setIsLoading(false);
     }
   };
+
+  if (isRedirectLoading || redirectSuccessMessage) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-indigo-950 via-slate-900 to-indigo-900 flex flex-col items-center justify-center p-6 text-center relative font-sans">
+        {/* Decorative elements */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.15)_0%,transparent_60%)] pointer-events-none" />
+        
+        <div className="bg-slate-900/85 border-2 border-violet-500/50 rounded-3xl p-8 max-w-md w-full space-y-6 shadow-2xl relative backdrop-blur-sm z-10">
+          {/* Animated Pulsing Icon */}
+          <div className="w-20 h-20 bg-gradient-to-tr from-violet-500 to-indigo-500 rounded-full flex items-center justify-center mx-auto shadow-lg animate-pulse">
+            <Sparkles className="w-10 h-10 text-white" />
+          </div>
+          
+          <div className="space-y-3">
+            <h2 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-indigo-300 uppercase tracking-wide">
+              {redirectSuccessMessage ? '🎉 Masuk Berhasil!' : 'Mengakses Google...'}
+            </h2>
+            <p className="text-slate-300 font-medium text-sm leading-relaxed">
+              {redirectSuccessMessage 
+                ? 'Sambungan aman telah dibuat! Halaman ini akan menutup secara otomatis dalam beberapa saat.' 
+                : 'Silakan pilih atau masuk dengan akun Google/Belajar.id milikmu di jendela berikutnya untuk mulai bermain.'}
+            </p>
+          </div>
+
+          <div className="flex justify-center items-center py-2">
+            <div className="flex space-x-2">
+              <div className="w-3 h-3 bg-violet-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+              <div className="w-3 h-3 bg-indigo-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+              <div className="w-3 h-3 bg-pink-500 rounded-full animate-bounce"></div>
+            </div>
+          </div>
+          
+          <div className="text-[11px] text-slate-500 font-mono">
+            {redirectSuccessMessage ? 'MENUTUP HALAMAN...' : 'MENGHUBUNGKAN KE PORTAL NUMERAVERSE'}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-indigo-950 via-slate-900 to-indigo-900 flex items-center justify-center p-4 overflow-hidden relative font-sans">
@@ -921,6 +1060,60 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onAdminLogin })
                 Masuk Portal Guru
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* State Menunggu Login di Iframe */}
+      {isIframeLoginOpened && (
+        <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fadeIn">
+          <div className="bg-slate-900 border-2 border-indigo-500/50 rounded-3xl p-8 max-w-sm w-full text-center space-y-6 shadow-2xl relative">
+            <div className="w-16 h-16 bg-indigo-500/10 border border-indigo-500/30 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
+              <ExternalLink className="w-8 h-8 text-indigo-400 animate-pulse" />
+            </div>
+            
+            <div className="space-y-2">
+              <h3 className="text-lg font-black text-white uppercase tracking-wider">
+                Menghubungkan Akun Google
+              </h3>
+              <p className="text-xs text-slate-300 font-semibold leading-relaxed">
+                Kami telah membuka jendela masuk Google baru. Silakan pilih akun Google/Belajar.id milikmu di sana.
+              </p>
+              <p className="text-[11px] text-violet-400 font-bold italic">
+                Setelah selesai, game ini akan masuk otomatis!
+              </p>
+            </div>
+
+            <div className="flex justify-center py-1">
+              <div className="flex space-x-1.5 items-center">
+                <span className="w-2.5 h-2.5 bg-indigo-500 rounded-full animate-ping"></span>
+                <span className="text-[10px] text-slate-400 font-mono uppercase tracking-widest font-black">Menunggu masuk...</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                sound.playClick();
+                // Buka ulang jika tertutup atau terblokir
+                const newWindow = window.open(window.location.origin + window.location.pathname + '?login_trigger=google', '_blank');
+                if (!newWindow) {
+                  setErrorMessage('auth/popup-blocked');
+                }
+              }}
+              className="w-full bg-slate-950 border border-slate-800 hover:border-slate-700 hover:bg-slate-900/50 text-slate-300 font-bold text-xs py-2.5 px-4 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2"
+            >
+              <ExternalLink className="w-4 h-4" />
+              Buka Ulang Jendela Masuk
+            </button>
+            
+            <button
+              type="button"
+              onClick={() => { sound.playClick(); setIsIframeLoginOpened(false); }}
+              className="text-xs text-slate-500 hover:text-slate-400 font-bold transition-colors cursor-pointer block mx-auto"
+            >
+              Kembali
+            </button>
           </div>
         </div>
       )}
