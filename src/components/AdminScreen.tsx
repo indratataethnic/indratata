@@ -42,7 +42,7 @@ import { PlayerProfile } from '../types';
 import { getAllPlayerProfiles, savePlayerProfile, db, getGlobalStats } from '../firebase';
 import { doc, deleteDoc } from 'firebase/firestore';
 import { sound } from '../utils/audio';
-import { getSheetsConfig, saveSheetsConfig } from '../utils/sheets';
+import { getSheetsConfig, saveSheetsConfig, getPlayersFromSheets, getStatsFromSheets } from '../utils/sheets';
 
 interface AdminScreenProps {
   onBack: () => void;
@@ -78,12 +78,45 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onBack }) => {
   const loadPlayers = async () => {
     setIsLoading(true);
     try {
-      const data = await getAllPlayerProfiles();
+      const config = await getSheetsConfig();
+      let data: PlayerProfile[] = [];
+      let stats = { views: 0, plays: 0 };
+      
+      if (config.webAppUrl) {
+        console.log('Mengambil data otomatis dari Google Sheets...');
+        // 1. Ambil data siswa dari Google Sheet
+        const sheetPlayers = await getPlayersFromSheets();
+        if (sheetPlayers && sheetPlayers.length > 0) {
+          data = sheetPlayers;
+        } else {
+          data = await getAllPlayerProfiles();
+        }
+        
+        // 2. Ambil statistik global dari Google Sheet
+        const sheetStats = await getStatsFromSheets();
+        if (sheetStats) {
+          stats = sheetStats;
+        } else {
+          stats = await getGlobalStats();
+        }
+      } else {
+        data = await getAllPlayerProfiles();
+        stats = await getGlobalStats();
+      }
+
       setPlayers(data);
-      const stats = await getGlobalStats();
       setGlobalStats(stats);
     } catch (e) {
       console.error('Gagal mengambil data pahlawan & statistik:', e);
+      // Fallback terakhir ke Firestore
+      try {
+        const data = await getAllPlayerProfiles();
+        setPlayers(data);
+        const stats = await getGlobalStats();
+        setGlobalStats(stats);
+      } catch (err) {
+        console.error('Fallback gagal:', err);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -769,6 +802,20 @@ function doGet(e) {
     }
     return ContentService.createTextOutput(JSON.stringify({ success: true, players: players })).setMimeType(ContentService.MimeType.JSON);
   }
+
+  if (action === 'getStats') {
+    var stats = { views: 0, plays: 0 };
+    var sheet = ss.getSheetByName('Aktivitas');
+    if (sheet) {
+      var data = sheet.getDataRange().getValues();
+      for (var i = 1; i < data.length; i++) {
+        var type = data[i][1];
+        if (type === 'VISIT') stats.views++;
+        if (type === 'GAMEPLAY') stats.plays++;
+      }
+    }
+    return ContentService.createTextOutput(JSON.stringify({ success: true, stats: stats })).setMimeType(ContentService.MimeType.JSON);
+  }
   
   return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'Aksi tidak valid.' })).setMimeType(ContentService.MimeType.JSON);
 }
@@ -788,7 +835,7 @@ function doPost(e) {
     var sheet = ss.getSheetByName('Siswa');
     if (!sheet) {
       sheet = ss.insertSheet('Siswa');
-      sheet.appendRow(['ID Siswa', 'Nama', 'Kelas', 'Asal Sekolah', 'Level', 'XP', 'Koin', 'Nyawa', 'Jumlah Badge', 'Terakhir Bermain']);
+      sheet.appendRow(['ID Siswa', 'Nama', 'Kelas', 'Asal Sekolah', 'Level', 'XP', 'Koin', 'Nyawa', 'Jumlah Badge', 'Misi Selesai', 'Terakhir Bermain']);
     }
     var player = postData.player;
     var data = sheet.getDataRange().getValues();
@@ -809,6 +856,7 @@ function doPost(e) {
       player.coins,
       player.lives,
       player.badges ? player.badges.length : 0,
+      player.completedLevelsCount || 0,
       new Date(player.lastPlayed || Date.now()).toLocaleString('id-ID')
     ];
     if (foundIndex !== -1) {

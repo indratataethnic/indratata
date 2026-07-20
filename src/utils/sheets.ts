@@ -100,6 +100,17 @@ export async function syncPlayerToSheets(player: PlayerProfile): Promise<boolean
   if (!url) return false;
 
   try {
+    // Hitung total misi/level selesai
+    let completedLevelsCount = 0;
+    if (player.completedLevels) {
+      Object.values(player.completedLevels).forEach(arr => {
+        const levelList = arr as number[];
+        if (levelList && Array.isArray(levelList)) {
+          completedLevelsCount += levelList.length;
+        }
+      });
+    }
+
     const response = await fetch(url, {
       method: 'POST',
       mode: 'no-cors', // mode no-cors mencegah masalah CORS browser saat Apps Script dialihkan
@@ -118,6 +129,7 @@ export async function syncPlayerToSheets(player: PlayerProfile): Promise<boolean
           coins: player.coins,
           lives: player.lives,
           badges: player.badges,
+          completedLevelsCount,
           lastPlayed: player.lastPlayed
         }
       })
@@ -213,4 +225,107 @@ export async function getQuestionsFromSheets(): Promise<Question[]> {
     console.warn('Gagal mengambil soal dari Google Sheet (kemungkinan CORS atau format salah):', error);
   }
   return [];
+}
+
+/**
+ * Mengambil semua data pahlawan dari Google Sheet
+ */
+export async function getPlayersFromSheets(): Promise<PlayerProfile[]> {
+  const url = await getSheetsUrl();
+  if (!url) return [];
+
+  try {
+    const fetchUrl = `${url}?action=getPlayers`;
+    const response = await fetch(fetchUrl);
+    if (!response.ok) throw new Error('Network response not ok');
+    const result = await response.json();
+    if (result && result.success && Array.isArray(result.players)) {
+      return result.players.map((sheetPlayer: any) => {
+        const id = sheetPlayer['ID Siswa'] || sheetPlayer['ID'] || sheetPlayer['id'] || '';
+        const name = sheetPlayer['Nama'] || sheetPlayer['name'] || '';
+        const grade = Number(sheetPlayer['Kelas'] || sheetPlayer['grade'] || 1);
+        const school = sheetPlayer['Asal Sekolah'] || sheetPlayer['School'] || sheetPlayer['school'] || '';
+        const level = Number(sheetPlayer['Level'] || sheetPlayer['level'] || 1);
+        const xp = Number(sheetPlayer['XP'] || sheetPlayer['xp'] || 0);
+        const coins = Number(sheetPlayer['Koin'] || sheetPlayer['coins'] || 0);
+        const lives = Number(sheetPlayer['Nyawa'] || sheetPlayer['lives'] || 5);
+        
+        let badges: string[] = [];
+        const badgeVal = sheetPlayer['Jumlah Badge'] || sheetPlayer['badges'] || sheetPlayer['Jumlah Penghargaan'] || 0;
+        if (typeof badgeVal === 'number') {
+          badges = Array(badgeVal).fill('badge');
+        } else if (typeof badgeVal === 'string') {
+          if (badgeVal.includes('|')) {
+            badges = badgeVal.split('|').map((b: string) => b.trim());
+          } else {
+            const parsedNum = parseInt(badgeVal);
+            if (!isNaN(parsedNum)) {
+              badges = Array(parsedNum).fill('badge');
+            } else if (badgeVal.trim()) {
+              badges = [badgeVal];
+            }
+          }
+        }
+
+        let lastPlayed = Date.now();
+        const lpVal = sheetPlayer['Terakhir Bermain'] || sheetPlayer['lastPlayed'] || sheetPlayer['Terakhir Main'];
+        if (lpVal) {
+          const parsedDate = Date.parse(lpVal);
+          if (!isNaN(parsedDate)) {
+            lastPlayed = parsedDate;
+          }
+        }
+
+        const completedCountVal = Number(sheetPlayer['Misi Selesai'] || sheetPlayer['completedLevelsCount'] || 0);
+        const completedLevels: { [worldId: number]: number[] } = {};
+        if (completedCountVal > 0) {
+          completedLevels[1] = Array.from({ length: completedCountVal }, (_, i) => i + 1);
+        }
+
+        return {
+          id: String(id),
+          name: String(name),
+          grade,
+          school: String(school),
+          avatar: sheetPlayer['avatar'] || 'niko',
+          xp,
+          level,
+          coins,
+          lives,
+          lastLifeRegenTime: Date.now(),
+          unlockedWorlds: [1, 2, 7, 8],
+          completedLevels,
+          badges,
+          lastPlayed
+        };
+      });
+    }
+  } catch (error) {
+    console.warn('Gagal mengambil data siswa dari Google Sheet (CORS atau format salah):', error);
+  }
+  return [];
+}
+
+/**
+ * Mengambil data statistik global (tayangan/visit dan gameplay) dari Google Sheet
+ */
+export async function getStatsFromSheets(): Promise<{ views: number; plays: number } | null> {
+  const url = await getSheetsUrl();
+  if (!url) return null;
+
+  try {
+    const fetchUrl = `${url}?action=getStats`;
+    const response = await fetch(fetchUrl);
+    if (!response.ok) throw new Error('Network response not ok');
+    const result = await response.json();
+    if (result && result.success && result.stats) {
+      return {
+        views: Number(result.stats.views || 0),
+        plays: Number(result.stats.plays || 0)
+      };
+    }
+  } catch (error) {
+    console.warn('Gagal mengambil statistik dari Google Sheet:', error);
+  }
+  return null;
 }
