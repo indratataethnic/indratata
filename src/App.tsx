@@ -22,6 +22,7 @@ import { sound } from './utils/audio';
 import { auth, getPlayerProfile, savePlayerProfile, trackAppView, trackGameplay } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { NumeraverseEngine } from './utils/gameEngine';
+import { syncPlayerToSheets, logActivityToSheets } from './utils/sheets';
 
 export default function App() {
   const [profile, setProfile] = useState<PlayerProfile | null>(null);
@@ -34,6 +35,9 @@ export default function App() {
   useEffect(() => {
     trackAppView().catch((err) => {
       console.warn('Gagal mencatat tayangan global:', err);
+    });
+    logActivityToSheets('VISIT', 'Membuka/memuat aplikasi Numeraverse').catch((err) => {
+      console.warn('Gagal mencatat kunjungan ke Google Sheets:', err);
     });
   }, []);
 
@@ -49,6 +53,11 @@ export default function App() {
     // Melakukan sinkronisasi cloud secara aman di latar belakang
     savePlayerProfile(newProfile).catch((err) => {
       console.error('Gagal mencadangkan data profil ke Firestore cloud:', err);
+    });
+
+    // Sinkronisasi ke Google Sheets secara real-time
+    syncPlayerToSheets(newProfile).catch((err) => {
+      console.warn('Gagal sinkronisasi data pahlawan ke Google Sheets:', err);
     });
   };
 
@@ -147,7 +156,22 @@ export default function App() {
           }
         }
       } else {
-        // Pengguna tidak masuk atau telah keluar, hapus cache lokal
+        // Pengguna tidak masuk Firebase Auth (bisa jadi bermain dalam mode tanpa akun / offline)
+        const localStored = localStorage.getItem('numeraverse_player_profile');
+        if (localStored) {
+          try {
+            const parsed = JSON.parse(localStored);
+            if (parsed && parsed.id && parsed.id.startsWith('offline_')) {
+              // Pengguna bermain dalam mode tanpa akun, biarkan masuk ke lobby dengan data ter-restore!
+              setProfile(parsed);
+              setCurrentView('lobby');
+              setIsLoadingAuth(false);
+              return;
+            }
+          } catch (e) {}
+        }
+
+        // Benar-benar tidak masuk dan tidak ada profil offline, hapus dan ke auth screen
         setProfile(null);
         localStorage.removeItem('numeraverse_player_profile');
         setCurrentView('auth');
@@ -204,6 +228,10 @@ export default function App() {
     setCurrentView('gameplay');
     trackGameplay().catch((err) => {
       console.warn('Gagal mencatat gameplay global:', err);
+    });
+    // Catat ke Google Sheets
+    logActivityToSheets('GAMEPLAY', `Memulai Level ${levelId} di Dunia ${worldId}`, profile).catch((err) => {
+      console.warn('Gagal mencatat aktivitas ke Google Sheets:', err);
     });
   };
 

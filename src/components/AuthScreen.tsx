@@ -27,6 +27,7 @@ import {
   signInWithPopup
 } from 'firebase/auth';
 import { auth, savePlayerProfile, getPlayerProfile } from '../firebase';
+import firebaseConfig from '../../firebase-applet-config.json';
 import { sound } from '../utils/audio';
 import { PlayerProfile } from '../types';
 
@@ -79,6 +80,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onAdminLogin })
   // State Tambahan UI
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // State Pulihkan Data Tamu (Offline)
+  const [showRestoreForm, setShowRestoreForm] = useState(false);
+  const [restoreId, setRestoreId] = useState('');
+  const [restoreSuccess, setRestoreSuccess] = useState<string | null>(null);
+  const [isRestoring, setIsRestoring] = useState(false);
 
   // State Login Admin / Guru
   const [showAdminLogin, setShowAdminLogin] = useState(false);
@@ -179,6 +186,39 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onAdminLogin })
   };
 
   /**
+   * Menangani pemulihan profil tamu menggunakan Kode Pahlawan dari Firestore
+   */
+  const handleRestore = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!restoreId.trim()) return;
+    setIsRestoring(true);
+    setErrorMessage(null);
+    setRestoreSuccess(null);
+    try {
+      sound.playClick();
+      const profile = await getPlayerProfile(restoreId.trim());
+      if (profile) {
+        sound.playLevelUp();
+        setRestoreSuccess('Berhasil memulihkan pahlawan ' + profile.name + '! Memulai game...');
+        // Simpan ke localStorage
+        localStorage.setItem('numeraverse_player_profile', JSON.stringify(profile));
+        setTimeout(() => {
+          onLogin(profile);
+        }, 1500);
+      } else {
+        sound.playWrong();
+        setErrorMessage('Kode Pahlawan tidak ditemukan di database cloud!');
+      }
+    } catch (err: any) {
+      console.error('Gagal memulihkan profil:', err);
+      sound.playWrong();
+      setErrorMessage('Terjadi kesalahan koneksi saat memulihkan profil.');
+    } finally {
+      setIsRestoring(false);
+    }
+  };
+
+  /**
    * Menangani login menggunakan Google Sign-In
    */
   const handleGoogleSignIn = async () => {
@@ -232,6 +272,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onAdminLogin })
         friendlyError = 'auth/popup-blocked';
       } else if (error.code === 'auth/operation-not-allowed') {
         friendlyError = 'Metode masuk Google belum diaktifkan di Firebase Console. Silakan hubungi admin.';
+      } else if (error.code === 'auth/unauthorized-domain' || (error.message && error.message.includes('unauthorized-domain'))) {
+        friendlyError = 'auth/unauthorized-domain';
       } else if (error.message) {
         friendlyError = error.message;
       }
@@ -499,6 +541,72 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onAdminLogin })
                       💡 <strong>Alternatif:</strong> Anda juga tetap bisa membuat akun baru secara instan di atas menggunakan kolom <strong>Nama, Surel (Email) & Sandi</strong> tanpa memerlukan jendela pop-up!
                     </div>
                   </div>
+                ) : errorMessage.includes('auth/unauthorized-domain') ? (
+                  <div className="mb-6 bg-amber-500/10 border-2 border-amber-500/40 rounded-2xl p-5 flex flex-col gap-3 animate-fadeIn text-amber-200">
+                    <div className="flex items-start gap-3">
+                      <Info className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                      <div>
+                        <h5 className="text-amber-400 font-black text-sm uppercase tracking-wide">Domain Belum Diotorisasi di Firebase!</h5>
+                        <p className="text-slate-300 text-xs font-semibold mt-1 leading-relaxed">
+                          Supaya Google Sign-In bisa berjalan dengan lancar, Anda harus mendaftarkan domain situs web ini ke konsol Firebase Anda.
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-slate-950/80 rounded-xl p-4 border border-amber-500/20 text-xs space-y-2.5 mt-1">
+                      <p className="font-extrabold text-amber-400">Cara Mendaftarkan Domain:</p>
+                      <ol className="list-decimal list-inside space-y-1.5 text-slate-300 leading-relaxed font-medium">
+                        <li>
+                          Buka <a href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/providers`} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline font-bold inline-flex items-center gap-0.5">Firebase Console ↗</a>.
+                        </li>
+                        <li>
+                          Buka menu <strong>Authentication</strong> di panel sebelah kiri, lalu pilih tab <strong>Settings</strong> di bagian atas.
+                        </li>
+                        <li>
+                          Klik menu <strong>Authorized domains</strong> (Domain diizinkan) di daftar pengaturan.
+                        </li>
+                        <li>
+                          Klik tombol <strong>Add domain</strong> (Tambah domain) di sebelah kanan.
+                        </li>
+                        <li>
+                          Salin dan tempel domain ini: <code className="text-indigo-300 bg-slate-900 px-1.5 py-0.5 rounded font-bold font-mono select-all">{window.location.hostname}</code>, lalu klik <strong>Add</strong>.
+                        </li>
+                        <li>
+                          Kembali ke game ini dan coba Masuk dengan Google lagi!
+                        </li>
+                      </ol>
+                    </div>
+
+                    <div className="border-t border-slate-800/60 pt-3">
+                      <p className="text-xs font-bold text-slate-300 mb-2">⚡ Solusi Instan Tanpa Atur Firebase:</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          sound.playLevelUp();
+                          const guestProfile: PlayerProfile = {
+                            id: 'offline_' + Math.random().toString(36).substring(2, 9),
+                            name: name.trim() || 'TamuNumera',
+                            grade: selectedGrade || 1,
+                            avatar: selectedAvatar || 'niko',
+                            xp: 0,
+                            level: 1,
+                            coins: 25,
+                            lives: 5,
+                            lastLifeRegenTime: Date.now(),
+                            unlockedWorlds: [1, 2, 7, 8],
+                            completedLevels: {},
+                            badges: [],
+                            lastPlayed: Date.now()
+                          };
+                          localStorage.setItem('numeraverse_player_profile', JSON.stringify(guestProfile));
+                          onLogin(guestProfile);
+                        }}
+                        className="w-full bg-gradient-to-r from-emerald-600 to-teal-500 hover:brightness-110 border-b-4 border-emerald-800 text-white font-black text-xs py-3 px-4 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider"
+                      >
+                        <span>Gunakan Mode Tanpa Akun (Offline) ↗</span>
+                      </button>
+                    </div>
+                  </div>
                 ) : (
                   <div className="mb-6 bg-rose-500/10 border-2 border-rose-500/40 rounded-2xl p-4 flex items-start gap-3 animate-fadeIn">
                     <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
@@ -658,6 +766,49 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onAdminLogin })
                       <span>Mulai Petualangan Offline!</span>
                       <ArrowRight className="w-4 h-4 ml-0.5" />
                     </button>
+
+                    {/* Pembatas / Tombol Pemulihan Akun Tamu */}
+                    <div className="pt-3 border-t border-slate-800/80 text-center">
+                      <button
+                        type="button"
+                        onClick={() => { sound.playClick(); setShowRestoreForm(!showRestoreForm); }}
+                        className="text-xs text-indigo-400 hover:text-indigo-300 font-extrabold uppercase tracking-wider flex items-center gap-1 mx-auto cursor-pointer"
+                      >
+                        🔑 {showRestoreForm ? 'Sembunyikan Form Pemulihan' : 'Punya Kode Pahlawan? Pulihkan Data Anda'}
+                      </button>
+                      
+                      {showRestoreForm && (
+                        <div className="mt-4 p-4 bg-slate-950/60 border border-slate-800/80 rounded-2xl text-left space-y-3 animate-fadeIn">
+                          <p className="text-[11px] text-slate-400 font-bold leading-relaxed">
+                            Masukkan Kode Pahlawan Anda (misalnya: <code className="text-indigo-300">offline_abc123</code>) untuk memulihkan seluruh pencapaian Anda yang tersimpan di cloud database:
+                          </p>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={restoreId}
+                              onChange={(e) => setRestoreId(e.target.value)}
+                              placeholder="Masukkan Kode Pahlawan"
+                              className="bg-slate-900 border border-slate-750 focus:border-violet-500 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-white placeholder-slate-600 outline-none flex-1 shadow-inner"
+                            />
+                            <button
+                              type="button"
+                              disabled={isRestoring || !restoreId.trim()}
+                              onClick={handleRestore}
+                              className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:brightness-110 disabled:opacity-40 text-white text-xs font-black px-4 py-2.5 rounded-xl border-b-2 border-indigo-800 transition-all flex items-center gap-1.5 cursor-pointer"
+                            >
+                              {isRestoring ? (
+                                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                'Pulihkan'
+                              )}
+                            </button>
+                          </div>
+                          {restoreSuccess && (
+                            <p className="text-emerald-400 text-[10px] font-black animate-pulse mt-1">{restoreSuccess}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
 
                   </div>
                 )}

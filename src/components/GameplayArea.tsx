@@ -7,6 +7,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Question, PlayerProfile } from '../types';
 import { WORLDS, generateDynamicQuestion } from '../questions';
 import { generateLevelQuestionPool } from '../utils/questionGenerator';
+import { getQuestionsFromSheets } from '../utils/sheets';
 import { 
   Heart, Coins, Sparkles, HelpCircle, ArrowRight, CheckCircle, 
   XCircle, Trophy, Home, Compass, RotateCcw, Award, Clock, Flame, ShieldAlert
@@ -132,17 +133,54 @@ export const GameplayArea: React.FC<GameplayAreaProps> = ({
     setAdaptiveAlert(null);
     setForceHint(false);
 
-    // Bangun 100 soal deterministik khusus untuk tingkat kelas, dunia, dan level ini
-    levelPoolRef.current = generateLevelQuestionPool(profile.grade, worldId, levelId);
+    const initPoolAndFirstQuestion = async () => {
+      // 1. Bangun 100 soal deterministik khusus untuk tingkat kelas, dunia, dan level ini
+      let pool = generateLevelQuestionPool(profile.grade, worldId, levelId);
 
-    // Ambil soal pertama (Difficulty: Sedang / Sesuai tingkat kelas)
-    const firstQ = getAdaptiveQuestion('sedang', []);
-    setQuestions([firstQ]);
-    setCurrentIndex(0);
-    resetQuestionState(firstQ);
-    
-    // Inisialisasi Game Session Baru dengan 5 nyawa
-    setSession(NumeraverseEngine.createInitialSession(5));
+      // 2. Ambil soal tambahan kustom dari Google Sheets (jika ada)
+      try {
+        const sheetQuestions = await getQuestionsFromSheets();
+        if (sheetQuestions && sheetQuestions.length > 0) {
+          // Filter hanya yang sesuai dengan worldId, levelId, dan grade saat ini
+          const matchingSheetQs = sheetQuestions.filter(
+            q => Number(q.worldId) === worldId && Number(q.levelId) === levelId && Number(q.grade) === profile.grade
+          );
+          if (matchingSheetQs.length > 0) {
+            console.log(`Menambahkan ${matchingSheetQs.length} soal kustom dari Google Sheet!`);
+            pool = [...matchingSheetQs, ...pool];
+          }
+        }
+      } catch (e) {
+        console.warn('Gagal memuat soal dari Google Sheets:', e);
+      }
+
+      // 3. Muat soal kustom dari localStorage (jika ada)
+      try {
+        const localCustom = localStorage.getItem('numeraverse_custom_questions');
+        if (localCustom) {
+          const parsedQs: Question[] = JSON.parse(localCustom);
+          const matchingLocalQs = parsedQs.filter(
+            q => q.worldId === worldId && q.levelId === levelId && q.grade === profile.grade
+          );
+          if (matchingLocalQs.length > 0) {
+            pool = [...matchingLocalQs, ...pool];
+          }
+        }
+      } catch (e) {}
+
+      levelPoolRef.current = pool;
+
+      // Ambil soal pertama (Difficulty: Sedang / Sesuai tingkat kelas)
+      const firstQ = getAdaptiveQuestion('sedang', []);
+      setQuestions([firstQ]);
+      setCurrentIndex(0);
+      resetQuestionState(firstQ);
+      
+      // Inisialisasi Game Session Baru dengan 5 nyawa
+      setSession(NumeraverseEngine.createInitialSession(5));
+    };
+
+    initPoolAndFirstQuestion();
   }, [worldId, levelId, profile.grade]);
 
   // Handle active countdown timer ticking

@@ -30,13 +30,19 @@ import {
   HelpCircle,
   UserCheck,
   Eye,
-  Gamepad2
+  Gamepad2,
+  FileSpreadsheet,
+  ExternalLink,
+  EyeOff,
+  Check,
+  AlertCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PlayerProfile } from '../types';
 import { getAllPlayerProfiles, savePlayerProfile, db, getGlobalStats } from '../firebase';
 import { doc, deleteDoc } from 'firebase/firestore';
 import { sound } from '../utils/audio';
+import { getSheetsConfig, saveSheetsConfig } from '../utils/sheets';
 
 interface AdminScreenProps {
   onBack: () => void;
@@ -60,6 +66,14 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onBack }) => {
   const [adjustLives, setAdjustLives] = useState<number>(0);
   const [successNotification, setSuccessNotification] = useState<string | null>(null);
 
+  // Google Sheets integration state
+  const [sheetsUrl, setSheetsUrlState] = useState('');
+  const [spreadsheetLink, setSpreadsheetLinkState] = useState('');
+  const [isTestingConfig, setIsTestingConfig] = useState(false);
+  const [testStatus, setTestStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [showAppsScriptGuide, setShowAppsScriptGuide] = useState(false);
+  const [showEmbedSheet, setShowEmbedSheet] = useState(true);
+
   // Load all players & global stats
   const loadPlayers = async () => {
     setIsLoading(true);
@@ -77,7 +91,61 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onBack }) => {
 
   useEffect(() => {
     loadPlayers();
+    const loadSheetsConfigData = async () => {
+      const config = await getSheetsConfig();
+      if (config.webAppUrl) setSheetsUrlState(config.webAppUrl);
+      if (config.spreadsheetLink) setSpreadsheetLinkState(config.spreadsheetLink);
+    };
+    loadSheetsConfigData();
   }, []);
+
+  const handleSaveSheetsConfig = async () => {
+    sound.playLevelUp();
+    try {
+      await saveSheetsConfig({
+        webAppUrl: sheetsUrl,
+        spreadsheetLink: spreadsheetLink
+      });
+      showToast('Konfigurasi Google Sheets berhasil disimpan!');
+    } catch (e) {
+      console.error(e);
+      showToast('Gagal menyimpan konfigurasi.');
+    }
+  };
+
+  const handleTestConnection = async () => {
+    sound.playClick();
+    if (!sheetsUrl) {
+      setTestStatus('error');
+      showToast('URL Web App kosong!');
+      return;
+    }
+    setIsTestingConfig(true);
+    setTestStatus('idle');
+    try {
+      const response = await fetch(`${sheetsUrl}?action=getQuestions`);
+      const result = await response.json();
+      if (result && result.success) {
+        setTestStatus('success');
+        showToast('Koneksi ke Google Sheets Sukses!');
+      } else {
+        setTestStatus('error');
+        showToast('Koneksi Gagal: Periksa Web App URL!');
+      }
+    } catch (err) {
+      // Fallback ping jika CORS menghalangi pembacaan respons langsung dari domain luar
+      try {
+        await fetch(sheetsUrl, { method: 'POST', mode: 'no-cors' });
+        setTestStatus('success');
+        showToast('Koneksi Sukses (Ping Berhasil)!');
+      } catch (e2) {
+        setTestStatus('error');
+        showToast('Koneksi Gagal: Periksa setelan Apps Script!');
+      }
+    } finally {
+      setIsTestingConfig(false);
+    }
+  };
 
   const handleRefresh = () => {
     sound.playClick();
@@ -488,6 +556,344 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onBack }) => {
             </div>
           </div>
 
+        </div>
+
+        {/* GOOGLE SHEETS INTEGRATION DASHBOARD PANEL */}
+        <div className="bg-slate-900/30 border border-slate-800/80 rounded-2xl p-6 space-y-6">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800/60 pb-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                <FileSpreadsheet className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-md font-black text-white flex items-center gap-2">
+                  <span>🌐 INTEGRASI GOOGLE SHEETS TERPUSAT</span>
+                  {testStatus === 'success' && (
+                    <span className="text-[9px] bg-emerald-500/10 text-emerald-300 font-bold px-2 py-0.5 rounded border border-emerald-500/20">
+                      Tersambung
+                    </span>
+                  )}
+                  {testStatus === 'error' && (
+                    <span className="text-[9px] bg-rose-500/10 text-rose-300 font-bold px-2 py-0.5 rounded border border-rose-500/20">
+                      Terputus / Error
+                    </span>
+                  )}
+                </h2>
+                <p className="text-slate-400 text-xs font-bold mt-0.5">
+                  Sinkronkan data pahlawan (Tamu & Google), Bank Soal, serta rekap skor kelas ke Spreadsheet secara real-time.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => { sound.playClick(); setShowAppsScriptGuide(!showAppsScriptGuide); }}
+                className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-850 text-indigo-400 border border-slate-800 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <HelpCircle className="w-4 h-4" />
+                <span>{showAppsScriptGuide ? 'Sembunyikan Panduan' : 'Panduan Apps Script'}</span>
+              </button>
+
+              {spreadsheetLink && (
+                <button
+                  onClick={() => { sound.playClick(); setShowEmbedSheet(!showEmbedSheet); }}
+                  className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-850 text-emerald-400 border border-slate-800 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Eye className="w-4 h-4" />
+                  <span>{showEmbedSheet ? 'Sembunyikan Spreadsheet' : 'Tampilkan Spreadsheet'}</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            {/* Kolom Kiri: Konfigurasi Input */}
+            <div className="lg:col-span-5 space-y-4">
+              
+              <div className="space-y-4 bg-slate-950/40 border border-slate-800/40 p-4 rounded-xl">
+                <h3 className="text-slate-300 font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
+                  ⚙️ Pengaturan Tautan
+                </h3>
+
+                {/* Spreadsheet Link Input */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-black uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                    <span>Tautan Spreadsheet Anda:</span>
+                    {spreadsheetLink && (
+                      <a 
+                        href={spreadsheetLink} 
+                        target="_blank" 
+                        rel="noreferrer" 
+                        className="text-[10px] text-violet-400 font-black flex items-center gap-1 hover:underline"
+                      >
+                        Buka Sheet <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    )}
+                  </label>
+                  <input
+                    type="text"
+                    value={spreadsheetLink}
+                    onChange={(e) => setSpreadsheetLinkState(e.target.value)}
+                    placeholder="https://docs.google.com/spreadsheets/d/.../edit"
+                    className="w-full bg-slate-950 border border-slate-800/80 focus:border-violet-500 rounded-lg p-2.5 text-xs text-slate-200 placeholder-slate-600 outline-none transition-all font-mono"
+                  />
+                </div>
+
+                {/* Web App URL Input */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-black uppercase tracking-wider text-slate-400">
+                    URL Aplikasi Web Apps Script:
+                  </label>
+                  <input
+                    type="text"
+                    value={sheetsUrl}
+                    onChange={(e) => setSheetsUrlState(e.target.value)}
+                    placeholder="https://script.google.com/macros/s/.../exec"
+                    className="w-full bg-slate-950 border border-slate-800/80 focus:border-violet-500 rounded-lg p-2.5 text-xs text-slate-200 placeholder-slate-600 outline-none transition-all font-mono"
+                  />
+                </div>
+
+                {/* Actions Row */}
+                <div className="flex gap-2.5 pt-2">
+                  <button
+                    onClick={handleSaveSheetsConfig}
+                    className="flex-1 bg-gradient-to-r from-violet-600 to-indigo-600 hover:brightness-110 border-b-4 border-indigo-800 text-white font-black text-xs py-2 px-4 rounded-lg shadow transition-all active:translate-y-0.5 active:border-b-0 cursor-pointer text-center"
+                  >
+                    Simpan Konfigurasi
+                  </button>
+
+                  <button
+                    onClick={handleTestConnection}
+                    disabled={isTestingConfig}
+                    className="bg-slate-900 border border-slate-800 hover:bg-slate-850 text-slate-300 font-bold text-xs px-4 py-2 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40"
+                  >
+                    {isTestingConfig ? (
+                      <div className="w-3.5 h-3.5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    )}
+                    <span>Uji Koneksi</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Status Info Card */}
+              <div className="bg-indigo-950/10 border border-indigo-900/30 rounded-xl p-4 text-xs font-bold leading-relaxed space-y-1.5 text-slate-300">
+                <span className="text-violet-300 font-black flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-violet-400 shrink-0" /> Sinkronisasi Otomatis Tamu (Tanpa Akun)
+                </span>
+                <p>
+                  Setiap kali anak memilih "Mode Tanpa Akun", pahlawan mereka akan mendapatkan ID Tamu acak. Seluruh pencapaian, level yang selesai, koin, XP, dan nama pahlawan akan disimpan secara cloud di Google Sheet ini, terpusat bersama data pemain resmi!
+                </p>
+              </div>
+
+            </div>
+
+            {/* Kolom Kanan: Panduan Apps Script ATAU Iframe Live Preview */}
+            <div className="lg:col-span-7">
+              {showAppsScriptGuide ? (
+                <div className="bg-slate-950/60 border border-slate-800/80 p-5 rounded-xl space-y-4 max-h-[400px] overflow-y-auto">
+                  <div className="flex justify-between items-center border-b border-slate-800/60 pb-2">
+                    <h4 className="text-indigo-400 font-extrabold text-sm">🛠️ Cara Pasang Google Apps Script</h4>
+                    <span className="text-[10px] text-slate-500">60 Detik Setup</span>
+                  </div>
+                  
+                  <div className="space-y-3 text-xs text-slate-300 leading-relaxed list-decimal pl-4">
+                    <p>1. Buka spreadsheet Google Anda, klik <b>Ekstensi &gt; Apps Script</b>.</p>
+                    <p>2. Hapus semua kode default, salin dan tempel kode lengkap di bawah ini.</p>
+                    <p>3. Klik ikon simpan 💾, lalu klik tombol <b>Terapkan &gt; Penerapan Baru</b>.</p>
+                    <p>4. Pilih jenis <b>Aplikasi Web</b>. Atur Akses: <b>"Siapa Saja"</b> (Anyone), lalu terapkan.</p>
+                    <p>5. Salin URL Aplikasi Web yang diberikan, lalu tempel di kolom URL di sebelah kiri.</p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Kode Apps Script:</span>
+                      <button
+                        onClick={() => {
+                          sound.playClick();
+                          navigator.clipboard.writeText(`// KODE GOOGLE APPS SCRIPT UNTUK SPREADSHEET NUMERAVERSE
+function doGet(e) {
+  var action = e.parameter.action;
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  if (action === 'getQuestions') {
+    var sheet = ss.getSheetByName('Bank Soal');
+    if (!sheet) return ContentService.createTextOutput(JSON.stringify({ success: true, questions: [] })).setMimeType(ContentService.MimeType.JSON);
+    var data = sheet.getDataRange().getValues();
+    if (data.length <= 1) return ContentService.createTextOutput(JSON.stringify({ success: true, questions: [] })).setMimeType(ContentService.MimeType.JSON);
+    var headers = data[0];
+    var questions = [];
+    for (var i = 1; i < data.length; i++) {
+      var row = data[i];
+      var q = {};
+      for (var j = 0; j < headers.length; j++) {
+        var key = headers[j];
+        var val = row[j];
+        if (key === 'options') {
+          q[key] = val ? val.split('|').map(function(s) { return s.trim(); }) : [];
+        } else if (key === 'grade' || key === 'worldId' || key === 'levelId' || key === 'points') {
+          q[key] = Number(val);
+        } else if (key === 'isHots' || key === 'isComputationalThinking') {
+          q[key] = (val === true || val === 'true');
+        } else {
+          q[key] = val;
+        }
+      }
+      questions.push(q);
+    }
+    return ContentService.createTextOutput(JSON.stringify({ success: true, questions: questions })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  if (action === 'getPlayers') {
+    var sheet = ss.getSheetByName('Siswa');
+    if (!sheet) return ContentService.createTextOutput(JSON.stringify({ success: true, players: [] })).setMimeType(ContentService.MimeType.JSON);
+    var data = sheet.getDataRange().getValues();
+    if (data.length <= 1) return ContentService.createTextOutput(JSON.stringify({ success: true, players: [] })).setMimeType(ContentService.MimeType.JSON);
+    var headers = data[0];
+    var players = [];
+    for (var i = 1; i < data.length; i++) {
+      var row = data[i];
+      var p = {};
+      for (var j = 0; j < headers.length; j++) {
+        p[headers[j]] = row[j];
+      }
+      players.push(p);
+    }
+    return ContentService.createTextOutput(JSON.stringify({ success: true, players: players })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'Aksi tidak valid.' })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var postData = JSON.parse(e.postData.contents);
+  var action = postData.action;
+  
+  if (action === 'syncPlayer') {
+    var sheet = ss.getSheetByName('Siswa');
+    if (!sheet) {
+      sheet = ss.insertSheet('Siswa');
+      sheet.appendRow(['ID Siswa', 'Nama', 'Kelas', 'Asal Sekolah', 'Level', 'XP', 'Koin', 'Nyawa', 'Jumlah Badge', 'Terakhir Bermain']);
+    }
+    var player = postData.player;
+    var data = sheet.getDataRange().getValues();
+    var foundIndex = -1;
+    for (var i = 1; i < data.length; i++) {
+      if (data[i][0] === player.id) {
+        foundIndex = i + 1;
+        break;
+      }
+    }
+    var rowValues = [
+      player.id,
+      player.name,
+      player.grade,
+      player.school || '-',
+      player.level,
+      player.xp,
+      player.coins,
+      player.lives,
+      player.badges ? player.badges.length : 0,
+      new Date(player.lastPlayed || Date.now()).toLocaleString('id-ID')
+    ];
+    if (foundIndex !== -1) {
+      sheet.getRange(foundIndex, 1, 1, rowValues.length).setValues([rowValues]);
+    } else {
+      sheet.appendRow(rowValues);
+    }
+    return ContentService.createTextOutput(JSON.stringify({ success: true, message: 'Profil siswa disinkronkan ke Google Sheet.' })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  if (action === 'logActivity') {
+    var sheet = ss.getSheetByName('Aktivitas');
+    if (!sheet) {
+      sheet = ss.insertSheet('Aktivitas');
+      sheet.appendRow(['Waktu', 'Jenis Aktivitas', 'Detail', 'ID Siswa', 'Nama', 'Kelas', 'Asal Sekolah']);
+    }
+    var log = postData.log;
+    sheet.appendRow([
+      new Date().toLocaleString('id-ID'),
+      log.type,
+      log.detail,
+      log.playerId || '-',
+      log.playerName || 'Tamu',
+      log.playerGrade || '-',
+      log.playerSchool || '-'
+    ]);
+    return ContentService.createTextOutput(JSON.stringify({ success: true, message: 'Aktivitas berhasil dicatat.' })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (action === 'addQuestion') {
+    var sheet = ss.getSheetByName('Bank Soal');
+    if (!sheet) {
+      sheet = ss.insertSheet('Bank Soal');
+      sheet.appendRow(['id', 'grade', 'worldId', 'levelId', 'text', 'type', 'options', 'answer', 'explanation', 'hint', 'points', 'isHots', 'isComputationalThinking', 'imageUrl']);
+    }
+    var q = postData.question;
+    sheet.appendRow([
+      q.id,
+      q.grade,
+      q.worldId,
+      q.levelId,
+      q.text,
+      q.type,
+      q.options ? q.options.join('|') : '',
+      q.answer,
+      q.explanation,
+      q.hint,
+      q.points,
+      q.isHots || false,
+      q.isComputationalThinking || false,
+      q.imageUrl || ''
+    ]);
+    return ContentService.createTextOutput(JSON.stringify({ success: true, message: 'Soal berhasil ditambahkan.' })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  return ContentService.createTextOutput(JSON.stringify({ success: false, message: 'Aksi post tidak valid.' })).setMimeType(ContentService.MimeType.JSON);
+}`);
+                          showToast('Kode berhasil disalin ke clipboard!');
+                        }}
+                        className="text-[10px] bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 font-bold px-2.5 py-1 rounded border border-indigo-500/20 cursor-pointer"
+                      >
+                        Salin Kode
+                      </button>
+                    </div>
+                    <pre className="w-full bg-slate-950 border border-slate-900 rounded-lg p-3 text-[10px] font-mono text-indigo-200 overflow-x-auto max-h-48 whitespace-pre">
+{`function doGet(e) {
+  // ... (Klik tombol Salin Kode di atas untuk mengambil semua baris)
+}`}
+                    </pre>
+                  </div>
+                </div>
+              ) : showEmbedSheet && spreadsheetLink && spreadsheetLink.includes('/d/') ? (
+                <div className="w-full bg-slate-950/60 border border-slate-800/80 rounded-xl overflow-hidden shadow-inner flex flex-col h-[280px]">
+                  <div className="bg-slate-900 border-b border-slate-800 px-3 py-1.5 flex items-center justify-between text-[10px] font-bold text-slate-400">
+                    <span className="flex items-center gap-1">📊 Live Spreadsheet Database</span>
+                    <span className="text-emerald-400 font-extrabold flex items-center gap-1">● Terkoneksi</span>
+                  </div>
+                  <iframe 
+                    src={`https://docs.google.com/spreadsheets/d/${spreadsheetLink.match(/\/d\/([a-zA-Z0-9-_]+)/)?.[1] || ''}/htmlview?widget=true&headers=false`}
+                    className="w-full flex-1 border-none bg-white"
+                    title="Live Google Sheet Database"
+                  />
+                </div>
+              ) : (
+                <div className="border border-dashed border-slate-800 rounded-xl h-[280px] flex flex-col items-center justify-center p-6 text-center space-y-3 bg-slate-950/20">
+                  <div className="text-4xl">📊</div>
+                  <div className="space-y-1">
+                    <h4 className="text-slate-300 font-black text-xs">Spreadsheet Belum Ditempel</h4>
+                    <p className="text-slate-500 text-[11px] leading-relaxed max-w-sm">
+                      Tunjukkan spreadsheet guru Anda dengan menempelkan tautan lengkap di kolom sebelah kiri untuk memuat tampilan database siswa secara live!
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+          </div>
         </div>
 
         {/* Database Search, Filters, and Table Grid */}

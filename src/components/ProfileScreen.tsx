@@ -27,6 +27,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ profile, onUpdateP
   const [avatar, setAvatar] = useState(profile.avatar);
   const [school, setSchool] = useState(profile.school || '');
   const [showSavedToast, setShowSavedToast] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,6 +36,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ profile, onUpdateP
     onUpdateProfile(name.trim(), grade, avatar, school.trim());
     setShowSavedToast(true);
     setTimeout(() => setShowSavedToast(false), 2000);
+  };
+
+  const handleCopyId = () => {
+    sound.playClick();
+    navigator.clipboard.writeText(profile.id);
+    setCopiedId(true);
+    setTimeout(() => setCopiedId(false), 2000);
   };
 
   // Calculate completed level count
@@ -93,6 +101,35 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ profile, onUpdateP
                 <span className="font-black text-sm text-slate-800 mt-1">{profile.coins}</span>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Koin</span>
               </div>
+            </div>
+
+            {/* Kode Pahlawan Block */}
+            <div className="mt-4 pt-3 border-t border-slate-100 text-left">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">
+                🔑 Kode Pahlawan:
+              </span>
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl p-2">
+                <span className="font-mono text-[9px] text-slate-600 truncate flex-1 select-all">
+                  {profile.id}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleCopyId}
+                  className={`text-[10px] font-black px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                    copiedId 
+                      ? 'bg-emerald-100 text-emerald-700' 
+                      : 'bg-violet-100 hover:bg-violet-200 text-violet-700'
+                  }`}
+                >
+                  {copiedId ? 'Disalin!' : 'Salin'}
+                </button>
+              </div>
+              <p className="text-[8px] text-slate-400 mt-1 leading-tight font-bold">
+                {profile.id.startsWith('offline_')
+                  ? 'Simpan kode ini untuk memulihkan seluruh level dan koin Anda kapan pun jika berganti browser!'
+                  : 'Sesi otomatis tercadangkan menggunakan Akun Google.'
+                }
+              </p>
             </div>
           </div>
 

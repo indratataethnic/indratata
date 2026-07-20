@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { Question, World, PlayerProfile } from '../types';
 import { QUESTION_BANK, WORLDS } from '../questions';
 import { sound } from '../utils/audio';
+import { addQuestionToSheets, getQuestionsFromSheets } from '../utils/sheets';
 import { 
   Search, ArrowLeft, Filter, Sparkles, BookOpen, 
   HelpCircle, Video, Volume2, Image as ImageIcon, 
@@ -52,21 +53,42 @@ export const QuestionBankScreen: React.FC<QuestionBankScreenProps> = ({ profile,
   const [newAudioUrl, setNewAudioUrl] = useState('');
   const [newVideoUrl, setNewVideoUrl] = useState('');
 
-  // Load questions including custom ones from localStorage
+  // Load questions including custom ones from localStorage and Google Sheets
   useEffect(() => {
     const defaultQuestions = [...QUESTION_BANK];
-    const storedCustom = localStorage.getItem('numeraverse_custom_questions');
-    if (storedCustom) {
-      try {
-        const parsed: Question[] = JSON.parse(storedCustom);
-        setQuestions([...defaultQuestions, ...parsed]);
-      } catch (e) {
-        console.error('Gagal memuat soal kustom:', e);
-        setQuestions(defaultQuestions);
+    const loadAllQuestions = async () => {
+      let localCustomList: Question[] = [];
+      const storedCustom = localStorage.getItem('numeraverse_custom_questions');
+      if (storedCustom) {
+        try {
+          localCustomList = JSON.parse(storedCustom);
+        } catch (e) {
+          console.error('Gagal memuat soal kustom lokal:', e);
+        }
       }
-    } else {
-      setQuestions(defaultQuestions);
-    }
+
+      // Gabungkan soal default & soal kustom lokal terlebih dahulu
+      let combined = [...defaultQuestions, ...localCustomList];
+      setQuestions(combined);
+
+      // Lalu ambil soal dari Google Sheets jika terkonfigurasi
+      try {
+        const sheetQuestions = await getQuestionsFromSheets();
+        if (sheetQuestions && sheetQuestions.length > 0) {
+          // Gabungkan tanpa duplikasi ID
+          const existingIds = new Set(combined.map(q => q.id));
+          const uniqueSheetQs = sheetQuestions.filter(q => !existingIds.has(q.id));
+          if (uniqueSheetQs.length > 0) {
+            combined = [...combined, ...uniqueSheetQs];
+            setQuestions(combined);
+          }
+        }
+      } catch (e) {
+        console.warn('Gagal memuat soal dari Google Sheets:', e);
+      }
+    };
+
+    loadAllQuestions();
   }, []);
 
   // Helper to determine the phase based on grade
@@ -190,6 +212,11 @@ export const QuestionBankScreen: React.FC<QuestionBankScreenProps> = ({ profile,
     }
     customList.push(newQ);
     localStorage.setItem('numeraverse_custom_questions', JSON.stringify(customList));
+
+    // Kirim ke Google Sheets jika terkonfigurasi
+    addQuestionToSheets(newQ).catch((err) => {
+      console.warn('Gagal mencadangkan soal ke Google Sheets:', err);
+    });
 
     // Reset Form fields
     setNewQuestionText('');
