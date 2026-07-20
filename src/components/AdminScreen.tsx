@@ -74,51 +74,53 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onBack }) => {
   const [showAppsScriptGuide, setShowAppsScriptGuide] = useState(false);
   const [showEmbedSheet, setShowEmbedSheet] = useState(true);
 
+  const [isSyncing, setIsSyncing] = useState(false);
+
   // Load all players & global stats
   const loadPlayers = async () => {
+    // 1. Ambil data lokal/Firestore terlebih dahulu agar UI instan & responsif
     setIsLoading(true);
     try {
-      const config = await getSheetsConfig();
-      let data: PlayerProfile[] = [];
-      let stats = { views: 0, plays: 0 };
-      
-      if (config.webAppUrl) {
-        console.log('Mengambil data otomatis dari Google Sheets...');
-        // 1. Ambil data siswa dari Google Sheet
-        const sheetPlayers = await getPlayersFromSheets();
-        if (sheetPlayers && sheetPlayers.length > 0) {
-          data = sheetPlayers;
-        } else {
-          data = await getAllPlayerProfiles();
-        }
-        
-        // 2. Ambil statistik global dari Google Sheet
-        const sheetStats = await getStatsFromSheets();
-        if (sheetStats) {
-          stats = sheetStats;
-        } else {
-          stats = await getGlobalStats();
-        }
-      } else {
-        data = await getAllPlayerProfiles();
-        stats = await getGlobalStats();
-      }
-
-      setPlayers(data);
-      setGlobalStats(stats);
-    } catch (e) {
-      console.error('Gagal mengambil data pahlawan & statistik:', e);
-      // Fallback terakhir ke Firestore
-      try {
-        const data = await getAllPlayerProfiles();
-        setPlayers(data);
-        const stats = await getGlobalStats();
-        setGlobalStats(stats);
-      } catch (err) {
-        console.error('Fallback gagal:', err);
-      }
+      const fastPlayers = await getAllPlayerProfiles();
+      const fastStats = await getGlobalStats();
+      setPlayers(fastPlayers);
+      setGlobalStats(fastStats);
+    } catch (err) {
+      console.error('Gagal mengambil data awal:', err);
     } finally {
       setIsLoading(false);
+    }
+
+    // 2. Sinkronisasi dari Google Sheets secara paralel di latar belakang (agar super cepat!)
+    try {
+      const config = await getSheetsConfig();
+      if (config.webAppUrl) {
+        setIsSyncing(true);
+        console.log('Sinkronisasi latar belakang dari Google Sheets dimulai...');
+        
+        // Ambil data siswa & statistik secara paralel
+        const [sheetPlayers, sheetStats] = await Promise.all([
+          getPlayersFromSheets().catch(e => {
+            console.warn('Gagal mengambil data siswa dari Sheets:', e);
+            return null;
+          }),
+          getStatsFromSheets().catch(e => {
+            console.warn('Gagal mengambil data statistik dari Sheets:', e);
+            return null;
+          })
+        ]);
+
+        if (sheetPlayers && sheetPlayers.length > 0) {
+          setPlayers(sheetPlayers);
+        }
+        if (sheetStats) {
+          setGlobalStats(sheetStats);
+        }
+      }
+    } catch (e) {
+      console.error('Gagal sinkronisasi data Google Sheets:', e);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -445,6 +447,12 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onBack }) => {
                 <span className="text-[10px] bg-violet-500/20 text-violet-300 font-black px-2.5 py-0.5 rounded-full uppercase tracking-widest border border-violet-500/30">
                   Dashboard Guru • UPT SDN Karanganyar
                 </span>
+                {isSyncing && (
+                  <span className="text-[9px] bg-emerald-500/20 text-emerald-300 font-black px-2.5 py-0.5 rounded-full uppercase tracking-widest border border-emerald-500/30 animate-pulse flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping" />
+                    Syncing Spreadsheet...
+                  </span>
+                )}
               </div>
               <h1 className="text-xl font-black text-white uppercase tracking-wider">
                 Portal Admin Numeraverse
@@ -458,7 +466,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onBack }) => {
               className="p-2.5 rounded-xl border border-slate-800 hover:border-slate-700 bg-slate-900/50 hover:bg-slate-900 text-slate-300 hover:text-white transition-all cursor-pointer"
               title="Perbarui Data"
             >
-              <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-5 h-5 ${isLoading || isSyncing ? 'animate-spin' : ''}`} />
             </button>
 
             <button
