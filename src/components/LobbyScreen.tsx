@@ -11,6 +11,7 @@ import {
   HelpCircle, ShieldAlert, Award, X, ChevronLeft, ChevronRight,
   Info, Heart, Shield, Activity
 } from 'lucide-react';
+import { useActiveSeason } from '../utils/seasonalEngine';
 
 interface LobbyScreenProps {
   profile: PlayerProfile;
@@ -28,6 +29,7 @@ const FUN_FACTS = [
 export const LobbyScreen: React.FC<LobbyScreenProps> = ({ profile, onNavigate }) => {
   const [showGuide, setShowGuide] = useState(false);
   const [guideStep, setGuideStep] = useState(0);
+  const { seasonId, season } = useActiveSeason();
 
   // Pick random fact based on player's name length to keep it deterministic per load but varied
   const factIndex = (profile.name?.length || 0) % FUN_FACTS.length;
@@ -75,7 +77,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ profile, onNavigate })
     <div className="max-w-4xl mx-auto px-4 py-8">
       
       {/* Hero Welcome Panel */}
-      <div className="bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 rounded-3xl p-6 md:p-8 text-white mb-8 shadow-lg relative overflow-hidden">
+      <div className={`bg-gradient-to-r ${seasonId === 'default' ? 'from-violet-600 via-indigo-600 to-cyan-500' : season.bgGradient} rounded-3xl p-6 md:p-8 text-white mb-8 shadow-lg relative overflow-hidden`}>
         
         {/* Background cosmic patterns */}
         <div className="absolute top-0 right-0 transform translate-x-12 -translate-y-12 w-48 h-48 bg-white/10 rounded-full blur-2xl" />
@@ -83,15 +85,22 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ profile, onNavigate })
  
         <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="space-y-3 text-center md:text-left">
-            <span className="inline-flex items-center gap-1.5 bg-white/20 text-white text-xs font-black px-3.5 py-1 rounded-full uppercase tracking-wider">
-              <Sparkles className="w-3.5 h-3.5 text-yellow-300 animate-spin" style={{ animationDuration: '6s' }} />
-              Selamat Datang Kembali!
-            </span>
+            <div className="flex flex-wrap gap-2 justify-center md:justify-start">
+              <span className="inline-flex items-center gap-1.5 bg-white/20 text-white text-xs font-black px-3.5 py-1 rounded-full uppercase tracking-wider">
+                <Sparkles className="w-3.5 h-3.5 text-yellow-300 animate-spin" style={{ animationDuration: '6s' }} />
+                Selamat Datang Kembali!
+              </span>
+              {seasonId !== 'default' && (
+                <span className="inline-flex items-center gap-1 bg-amber-400 text-slate-900 text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider animate-pulse shrink-0">
+                  🎉 {season.logo} EVENT: {season.name.toUpperCase()}
+                </span>
+              )}
+            </div>
             <h2 className="text-3xl md:text-5xl font-black tracking-tight leading-tight">
               HAI, {profile.name.toUpperCase()}!
             </h2>
             <p className="text-xs md:text-sm font-semibold opacity-95 max-w-lg">
-              Kekuatan numerasimu saat ini di level <strong className="text-yellow-300">Level {profile.level}</strong>. Terus selesaikan misi-misi matematika untuk memperkuat perlindungan Numeraverse!
+              Kekuatan numerasimu saat ini di level <strong className="text-yellow-300">Level {profile.level}</strong>. {seasonId === 'default' ? 'Terus selesaikan misi-misi matematika untuk memperkuat perlindungan Numeraverse!' : `Misi khusus "${season.theme}" sedang aktif! Pecahkan tantangan matematika sekarang!`}
             </p>
           </div>
  
@@ -154,6 +163,47 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ profile, onNavigate })
           </div>
         </div>
 
+      </div>
+
+      {/* Seasonal Companion & Collectibles Showcase */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        {/* NPC Nova Seasonal Companion Greeting */}
+        <div className="bg-white border-4 border-slate-100 rounded-3xl p-5 shadow-sm flex items-center gap-4 hover:border-violet-300 transition-all">
+          <div className="w-16 h-16 rounded-2xl bg-indigo-50 border-2 border-indigo-200 flex items-center justify-center text-4xl shrink-0 shadow-sm relative">
+            <span className="absolute -top-1.5 -right-1.5 text-xs animate-bounce">✨</span>
+            <span className="select-none">{season.npcCostume.emoji}</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h4 className="font-extrabold text-slate-800 text-sm truncate">{season.npcCostume.name}</h4>
+              <span className="bg-violet-100 text-violet-800 text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase border border-violet-200 tracking-wider">
+                Partner
+              </span>
+            </div>
+            <p className="text-slate-500 font-semibold text-[11px] leading-relaxed mt-0.5">
+              "{season.npcCostume.desc} Mari pecahkan soal!"
+            </p>
+          </div>
+        </div>
+
+        {/* Seasonal Collectibles Card */}
+        <div className="bg-white border-4 border-slate-100 rounded-3xl p-5 shadow-sm flex items-center gap-4 hover:border-amber-300 transition-all">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-50 to-yellow-50 border-2 border-amber-200 flex items-center justify-center text-4xl shrink-0 shadow-sm relative">
+            <span className="absolute -top-1.5 -right-1.5 text-xs animate-spin" style={{ animationDuration: '6s' }}>⭐</span>
+            <span className="select-none">{season.rewardEmoji}</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h4 className="font-extrabold text-slate-800 text-sm truncate">Hadiah: {season.rewardName}</h4>
+              <span className="bg-amber-100 text-amber-800 text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase border border-amber-200 tracking-wider">
+                Event
+              </span>
+            </div>
+            <p className="text-slate-500 font-semibold text-[11px] leading-relaxed mt-0.5">
+              Raih medali eksklusif <span className="text-violet-600 font-bold">"{season.badge.title}"</span> di event musiman ini!
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Leaderboard CTA Card */}

@@ -38,11 +38,12 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { PlayerProfile } from '../types';
+import { PlayerProfile, Question } from '../types';
 import { getAllPlayerProfiles, savePlayerProfile, db, getGlobalStats } from '../firebase';
 import { doc, deleteDoc } from 'firebase/firestore';
 import { sound } from '../utils/audio';
 import { getSheetsConfig, saveSheetsConfig, getPlayersFromSheets, getStatsFromSheets } from '../utils/sheets';
+import { AddQuestionForm } from './AddQuestionForm';
 
 interface AdminScreenProps {
   onBack: () => void;
@@ -87,6 +88,26 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ onBack }) => {
   const [showEmbedSheet, setShowEmbedSheet] = useState(true);
 
   const [isSyncing, setIsSyncing] = useState(false);
+  const [showAddQuestion, setShowAddQuestion] = useState(false);
+  const [customQuestionCount, setCustomQuestionCount] = useState<number>(() => {
+    try {
+      const stored = localStorage.getItem('numeraverse_custom_questions');
+      if (stored) {
+        const list = JSON.parse(stored);
+        return Array.isArray(list) ? list.length : 0;
+      }
+    } catch (e) {}
+    return 0;
+  });
+
+  const handleResetCustomQuestions = () => {
+    if (window.confirm('Apakah Anda yakin ingin menghapus semua soal kustom buatan sendiri dari perangkat ini?')) {
+      sound.playWrong();
+      localStorage.removeItem('numeraverse_custom_questions');
+      setCustomQuestionCount(0);
+      showToast('Seluruh soal kustom di perangkat ini berhasil di-reset!');
+    }
+  };
 
   // Load all players & global stats
   const loadPlayers = async () => {
@@ -974,6 +995,83 @@ function doPost(e) {
             </div>
 
           </div>
+        </div>
+
+        {/* MANAJEMEN SOAL MANDIRI / KURIKULUM KUSTOM */}
+        <div className="bg-slate-900/30 border border-slate-800/80 rounded-2xl p-6 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/60 pb-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-violet-400">
+                <Plus className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-md font-black text-white flex items-center gap-2">
+                  <span>📝 MANAJEMEN KURIKULUM & BANK SOAL</span>
+                </h2>
+                <p className="text-slate-400 text-xs font-bold mt-0.5">
+                  Buat soal kustom baru untuk dimasukkan ke dalam kurikulum petualangan siswa secara dinamis.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                onClick={() => { sound.playClick(); setShowAddQuestion(!showAddQuestion); }}
+                className="bg-violet-600 hover:bg-violet-700 border-b-4 border-violet-800 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all active:border-b-0 active:translate-y-0.5 shadow-md cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>{showAddQuestion ? 'Sembunyikan Form' : 'Tambah Soal Baru'}</span>
+              </button>
+
+              {customQuestionCount > 0 && (
+                <button
+                  onClick={handleResetCustomQuestions}
+                  className="bg-slate-900 border border-slate-800 hover:bg-slate-850 text-slate-400 hover:text-slate-200 font-extrabold text-xs px-3.5 py-2.5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+                  title="Reset Semua Soal Kustom"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  <span>Reset Kustom ({customQuestionCount})</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          <AnimatePresence>
+            {showAddQuestion && (
+              <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="text-slate-800"
+              >
+                <AddQuestionForm
+                  onSuccess={(newQ) => {
+                    setCustomQuestionCount(prev => prev + 1);
+                    showToast(`Berhasil menambahkan soal baru: "${newQ.text.substring(0, 40)}..."!`);
+                    setShowAddQuestion(false);
+                  }}
+                  onCancel={() => setShowAddQuestion(false)}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {!showAddQuestion && (
+            <div className="bg-slate-950/40 border border-slate-800/40 p-4 rounded-xl text-xs text-slate-400 flex items-center justify-between">
+              <div className="space-y-0.5">
+                <span className="font-extrabold text-slate-300 flex items-center gap-1.5">
+                  💡 Informasi Bank Soal Kustom
+                </span>
+                <p>
+                  Soal kustom yang dibuat di sini akan langsung di-inject ke dalam gameplay level adaptif siswa dan dicadangkan secara otomatis ke Google Sheets jika konfigurasi di atas sudah tersambung!
+                </p>
+              </div>
+              <div className="bg-slate-900 px-3 py-2 rounded-lg border border-slate-800 shrink-0 text-center ml-4">
+                <p className="text-[10px] uppercase font-black tracking-wider text-slate-500">Soal Kustom</p>
+                <p className="text-md font-black text-violet-400 mt-0.5">{customQuestionCount} Soal</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Database Search, Filters, and Table Grid */}

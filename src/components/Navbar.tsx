@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { PlayerProfile } from '../types';
 import { Heart, Coins, Trophy, Volume2, VolumeX, User, LogOut, Sparkles, BookOpen, Award } from 'lucide-react';
 import { sound } from '../utils/audio';
+import { useActiveSeason, SeasonId } from '../utils/seasonalEngine';
 
 interface NavbarProps {
   profile: PlayerProfile | null;
@@ -17,6 +18,7 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({ profile, onNavigate, onLogout, activeView }) => {
   const [muted, setMuted] = useState(sound.getMuted());
+  const { seasonId, season, selectSeason, seasons } = useActiveSeason();
 
   const handleToggleMute = () => {
     const isMuted = sound.toggleMute();
@@ -65,11 +67,31 @@ export const Navbar: React.FC<NavbarProps> = ({ profile, onNavigate, onLogout, a
             <span className="tracking-wider bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-transparent">NUMERAVERSE</span>
           </button>
           
-          <div className="flex items-center gap-2">
-            <span className="bg-amber-100 text-amber-800 text-xs md:text-sm font-bold px-3 py-1 rounded-full border-2 border-amber-300 shadow-sm flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-              Kelas {profile.grade}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-1 rounded-full border border-amber-300 shadow-sm flex items-center gap-1 shrink-0">
+              <Sparkles className="w-3 h-3 text-amber-500 animate-pulse" />
+              Kls {profile.grade}
             </span>
+            {/* Season Selector */}
+            <div className="flex items-center gap-1 bg-violet-100 text-violet-800 text-xs font-bold px-2.5 py-1 rounded-full border border-violet-300 shadow-sm transition-all hover:border-violet-400">
+              <span className="text-sm shrink-0">{season.logo}</span>
+              <select
+                id="nav-season-select"
+                value={seasonId}
+                onChange={(e) => {
+                  sound.playClick();
+                  selectSeason(e.target.value as SeasonId);
+                }}
+                className="bg-transparent font-black outline-none cursor-pointer pr-1 text-violet-900 border-none appearance-none focus:ring-0 py-0 text-[11px] uppercase tracking-wider"
+                title="Ganti Tema & Musim Dunia"
+              >
+                {seasons.map((s) => (
+                  <option key={s.id} value={s.id} className="text-slate-800 font-bold bg-white normal-case">
+                    {s.logo} {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 

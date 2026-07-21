@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { sound } from '../utils/audio';
 import { NumeraverseEngine, GameplaySessionState, LevelCompletionSummary } from '../utils/gameEngine';
+import { useActiveSeason, SEASONS } from '../utils/seasonalEngine';
 
 interface GameplayAreaProps {
   profile: PlayerProfile;
@@ -39,6 +40,7 @@ export const GameplayArea: React.FC<GameplayAreaProps> = ({
   onLevelFail,
   onBackToMap
 }) => {
+  const { season, seasonId } = useActiveSeason();
   const world = WORLDS.find(w => w.id === worldId) || WORLDS[0];
 
   // Pool of 100 questions for this world/level/grade
@@ -237,6 +239,21 @@ export const GameplayArea: React.FC<GameplayAreaProps> = ({
   };
 
   const currentQuestion = questions[currentIndex];
+
+  // Helper to get badge details for display (supporting seasonal badges)
+  const getBadgeDetails = (badgeId: string) => {
+    const matchedSeason = SEASONS.find(s => s.badge.id === badgeId);
+    if (matchedSeason) {
+      return {
+        emoji: matchedSeason.logo,
+        title: matchedSeason.badge.title
+      };
+    }
+    return {
+      emoji: '🎖️',
+      title: badgeId.replace(/_/g, ' ')
+    };
+  };
 
   // Helper avatar Emojis & Titles
   const getAvatarEmoji = () => {
@@ -447,6 +464,14 @@ export const GameplayArea: React.FC<GameplayAreaProps> = ({
     } else {
       // Selesaikan level & kalkulasi rating bintang akhir menggunakan Game Engine
       const summary = NumeraverseEngine.completeLevel(session, profile, worldId, levelId);
+      
+      // Inject seasonal badge if active
+      if (seasonId !== 'default' && !profile.badges.includes(season.badge.id)) {
+        if (!summary.newUnlockedBadges.includes(season.badge.id)) {
+          summary.newUnlockedBadges = [...summary.newUnlockedBadges, season.badge.id];
+        }
+      }
+
       setCompletionSummary(summary);
       sound.playVictoryFanfare();
       setIsCompleted(true);
@@ -569,14 +594,17 @@ export const GameplayArea: React.FC<GameplayAreaProps> = ({
             <div className="mb-6 animate-bounce">
               <h4 className="text-xs font-black text-pink-500 uppercase tracking-wider mb-2">🎖️ Lencana Baru Terbuka!</h4>
               <div className="flex justify-center gap-3">
-                {completionSummary.newUnlockedBadges.map(badgeId => (
-                  <div key={badgeId} className="bg-pink-50 border-2 border-pink-200 rounded-xl p-2.5 flex flex-col items-center justify-center max-w-[120px] shadow-sm">
-                    <span className="text-xl">⭐</span>
-                    <span className="text-[10px] font-black text-pink-700 mt-1 uppercase text-center leading-tight">
-                      {badgeId.replace(/_/g, ' ')}
-                    </span>
-                  </div>
-                ))}
+                {completionSummary.newUnlockedBadges.map(badgeId => {
+                  const badgeInfo = getBadgeDetails(badgeId);
+                  return (
+                    <div key={badgeId} className="bg-pink-50 border-2 border-pink-200 rounded-xl p-2.5 flex flex-col items-center justify-center max-w-[120px] shadow-sm">
+                      <span className="text-2xl">{badgeInfo.emoji}</span>
+                      <span className="text-[10px] font-black text-pink-700 mt-1 uppercase text-center leading-tight">
+                        {badgeInfo.title}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1011,21 +1039,44 @@ export const GameplayArea: React.FC<GameplayAreaProps> = ({
       </div>
 
       {/* 7. AVATAR COACHING ASSISTANCE SPEECH */}
-      <div className="bg-slate-100 border border-slate-200 rounded-2xl p-4 flex gap-3.5 items-start">
-        <div className="text-3xl bg-white p-2 rounded-xl border border-slate-200 shadow-inner flex items-center justify-center shrink-0">
-          {getAvatarEmoji()}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+        <div className="bg-slate-100 border border-slate-200 rounded-2xl p-4 flex gap-3.5 items-start">
+          <div className="text-3xl bg-white p-2 rounded-xl border border-slate-200 shadow-inner flex items-center justify-center shrink-0">
+            {getAvatarEmoji()}
+          </div>
+          <div className="space-y-1">
+            <span className="text-[9px] font-black uppercase text-indigo-600 tracking-wider block">{getAvatarName()} - Pemandu Matematika:</span>
+            <p className="text-xs text-slate-600 font-bold leading-relaxed">
+              {isAnswered 
+                ? isCorrect 
+                  ? 'Luar biasa! Analisis numerasimu sungguh tajam. Terus pertahankan ritme berpikir cepatmu!'
+                  : 'Tidak apa-apa, pahlawan! Belajar matematika adalah tentang mencoba. Ingatlah petunjuk dan amati pola pertanyaannya!'
+                : 'Baca soal dengan teliti ya. Perhatikan jenis operasinya, pahlawan!'
+              }
+            </p>
+          </div>
         </div>
-        <div className="space-y-1">
-          <span className="text-[9px] font-black uppercase text-indigo-600 tracking-wider block">{getAvatarName()} - Pemandu Matematika:</span>
-          <p className="text-xs text-slate-600 font-bold leading-relaxed">
-            {isAnswered 
-              ? isCorrect 
-                ? 'Luar biasa! Analisis numerasimu sungguh tajam. Terus pertahankan ritme berpikir cepatmu!'
-                : 'Tidak apa-apa, pahlawan! Belajar matematika adalah tentang mencoba. Ingatlah petunjuk dan amati pola pertanyaannya!'
-              : 'Baca soal dengan teliti ya. Perhatikan jenis operasinya, pahlawan!'
-            }
-          </p>
-        </div>
+
+        {seasonId !== 'default' && (
+          <div className="bg-violet-50 border border-violet-200 rounded-2xl p-4 flex gap-3.5 items-start animate-pulse">
+            <div className="text-3xl bg-white p-2 rounded-xl border border-violet-200 shadow-inner flex items-center justify-center shrink-0">
+              {season.npcCostume.emoji}
+            </div>
+            <div className="space-y-1">
+              <span className="text-[9px] font-black uppercase text-violet-700 tracking-wider block">
+                {season.npcCostume.name} - Teman Musiman:
+              </span>
+              <p className="text-xs text-slate-600 font-bold leading-relaxed">
+                {isAnswered 
+                  ? isCorrect 
+                    ? `Hebat sekali! Koin Numera dan medali "${season.badge.title}" akan segera jadi milikmu!`
+                    : `Jangan menyerah! Semangat ${season.name} ada bersamamu. Coba lagi!`
+                  : `Misi "${season.theme}" sedang aktif di dunia matematika ini. Mari berjuang bersama!`
+                }
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
     </div>

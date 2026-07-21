@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { PlayerProfile } from '../types';
 import { sound } from '../utils/audio';
 import { User, Sparkles, BookOpen, Coins, Award, Trophy, ArrowLeft, Check, Heart } from 'lucide-react';
+import { SEASONS } from '../utils/seasonalEngine';
 
 interface ProfileScreenProps {
   profile: PlayerProfile;
@@ -28,6 +29,23 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ profile, onUpdateP
   const [school, setSchool] = useState(profile.school || '');
   const [showSavedToast, setShowSavedToast] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
+
+  const getBadgeDetails = (badgeId: string) => {
+    const matchedSeason = SEASONS.find(s => s.badge.id === badgeId);
+    if (matchedSeason) {
+      return {
+        emoji: matchedSeason.logo,
+        title: matchedSeason.badge.title,
+        desc: matchedSeason.badge.description || `Didapatkan saat event khusus ${matchedSeason.name} aktif!`
+      };
+    }
+    // Default fallback
+    return {
+      emoji: '🎖️',
+      title: badgeId.replace(/_/g, ' '),
+      desc: 'Medali kehormatan pahlawan numerasi Numeraverse.'
+    };
+  };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -156,6 +174,38 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ profile, onUpdateP
             <p className="text-[10px] text-red-700 font-bold leading-relaxed">
               Nyawamu akan berkurang jika salah menjawab soal dalam misi, dan akan bertambah saat menyelesaikan level!
             </p>
+          </div>
+
+          {/* Lemari Medali / Medal Case */}
+          <div className="bg-white border-4 border-slate-100 rounded-3xl p-5 shadow-sm">
+            <h4 className="font-black text-slate-800 text-xs uppercase tracking-wider mb-3 flex items-center gap-1.5 justify-center border-b pb-2">
+              <Award className="w-4 h-4 text-violet-500 fill-violet-200" />
+              LEMARI MEDALI PAHALAWAN
+            </h4>
+            {profile.badges.length === 0 ? (
+              <p className="text-[10px] text-slate-400 font-bold italic text-center py-4">Belum ada medali yang dikoleksi. Selesaikan misi dan taklukkan bos untuk mengisi lemari medali!</p>
+            ) : (
+              <div className="grid grid-cols-3 gap-2">
+                {profile.badges.map((badgeId) => {
+                  const badge = getBadgeDetails(badgeId);
+                  return (
+                    <div 
+                      key={badgeId} 
+                      title={`${badge.title}: ${badge.desc}`}
+                      className="bg-slate-50 border border-slate-100 hover:border-violet-300 rounded-2xl p-2 flex flex-col items-center text-center transition-all cursor-help relative group"
+                    >
+                      <span className="text-2xl filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.1)]">{badge.emoji}</span>
+                      <span className="text-[9px] font-black text-slate-600 mt-1 truncate w-full uppercase">{badge.title}</span>
+                      
+                      {/* Tooltip on hover */}
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-40 bg-slate-950 text-white text-[8px] font-bold p-1.5 rounded-lg shadow-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 leading-snug">
+                        {badge.desc}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 

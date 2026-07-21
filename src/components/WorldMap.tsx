@@ -11,6 +11,8 @@ import {
   Compass, Pizza, Ruler, Box, BarChart3, Cpu, Crown, Sparkles, Trophy 
 } from 'lucide-react';
 import { sound } from '../utils/audio';
+import { useActiveSeason, getSeasonalWorld } from '../utils/seasonalEngine';
+import { SeasonalParticles } from './SeasonalParticles';
 
 interface WorldMapProps {
   profile: PlayerProfile;
@@ -36,6 +38,7 @@ const getWorldIcon = (iconName: string) => {
 
 export const WorldMap: React.FC<WorldMapProps> = ({ profile, onSelectLevel, onEnterBossBattle }) => {
   const [selectedWorld, setSelectedWorld] = useState<World | null>(null);
+  const { seasonId, season } = useActiveSeason();
 
   // Helper to check if a world is unlocked
   const isWorldUnlocked = (world: World) => {
@@ -157,7 +160,8 @@ export const WorldMap: React.FC<WorldMapProps> = ({ profile, onSelectLevel, onEn
     const completedList = profile.completedLevels[selectedWorld.id] || [];
     
     return (
-      <div className="max-w-4xl mx-auto px-4 py-6">
+      <div className="relative max-w-4xl mx-auto px-4 py-6 overflow-hidden rounded-3xl">
+        <SeasonalParticles type={season.particleType} />
         {/* Back Button and World Info */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <button
@@ -269,7 +273,8 @@ export const WorldMap: React.FC<WorldMapProps> = ({ profile, onSelectLevel, onEn
 
   // Render Main World Map view
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
+    <div className="relative max-w-6xl mx-auto px-4 py-8 overflow-hidden rounded-3xl">
+      <SeasonalParticles type={season.particleType} />
       {/* Map Header */}
       <div className="text-center mb-10">
         <h2 className="text-3xl md:text-4xl font-black text-slate-800 tracking-tight">PETA PETUALANGAN NUMERAVERSE</h2>
@@ -280,7 +285,8 @@ export const WorldMap: React.FC<WorldMapProps> = ({ profile, onSelectLevel, onEn
 
       {/* Grid of Worlds */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-        {WORLDS.map((world) => {
+        {WORLDS.map((rawWorld) => {
+          const world = getSeasonalWorld(rawWorld, seasonId);
           const unlocked = isWorldUnlocked(world);
           const completedCount = getCompletedLevelsInWorld(world.id);
           const progressPercent = Math.round((completedCount / world.levelsCount) * 100);

@@ -8,6 +8,7 @@ import { PlayerProfile } from '../types';
 import { BOSS_QUESTIONS } from '../questions';
 import { sound } from '../utils/audio';
 import { Swords, Heart, Shield, Sparkles, HelpCircle, Check, ArrowRight, XCircle } from 'lucide-react';
+import { useActiveSeason } from '../utils/seasonalEngine';
 
 interface BossBattleProps {
   profile: PlayerProfile;
@@ -22,6 +23,7 @@ export const BossBattle: React.FC<BossBattleProps> = ({
   onDefeat,
   onBackToMap
 }) => {
+  const { season } = useActiveSeason();
   const [bossHp, setBossHp] = useState(100);
   const [playerLives, setPlayerLives] = useState(profile.lives);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -151,14 +153,14 @@ export const BossBattle: React.FC<BossBattleProps> = ({
           <div className="relative inline-block">
             {/* Boss visual aura */}
             <div className="absolute -inset-4 bg-purple-500/30 rounded-full blur-xl animate-pulse" />
-            <span className="text-7xl md:text-8xl relative z-10 filter drop-shadow-[0_4px_12px_rgba(168,85,247,0.5)]">
-              😈
+            <span className="text-7xl md:text-8xl relative z-10 filter drop-shadow-[0_4px_12px_rgba(168,85,247,0.5)] select-none">
+              {season.bossCostume.emoji}
             </span>
           </div>
           <div>
-            <h4 className="text-xl font-black text-purple-400 tracking-wider">RAJA DISTRAKTOR</h4>
-            <span className="text-[10px] font-black text-rose-500 bg-rose-950 px-2.5 py-0.5 rounded-full border border-rose-800">
-              PENGACAK ANGKA DUNIA
+            <h4 className="text-xl font-black text-purple-400 tracking-wider uppercase">{season.bossCostume.name}</h4>
+            <span className="text-[10px] font-black text-rose-500 bg-rose-950 px-2.5 py-0.5 rounded-full border border-rose-800 uppercase">
+              {season.bossCostume.desc}
             </span>
           </div>
 

@@ -76,6 +76,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onAdminLogin })
   
   // State Input Form Utama (Hanya dipakai untuk mode offline)
   const [name, setName] = useState('');
+  const [offlineSchool, setOfflineSchool] = useState('');
   const [selectedGrade, setSelectedGrade] = useState<number>(1);
   const [selectedAvatar, setSelectedAvatar] = useState<string>('niko');
   
@@ -278,6 +279,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onAdminLogin })
         const guestProfile: PlayerProfile = {
           id: 'offline_' + Math.random().toString(36).substring(2, 9),
           name: name.trim(),
+          school: offlineSchool.trim() || undefined,
           grade: selectedGrade,
           avatar: selectedAvatar,
           xp: 0,
@@ -790,6 +792,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onAdminLogin })
                           const guestProfile: PlayerProfile = {
                             id: 'offline_' + Math.random().toString(36).substring(2, 9),
                             name: name.trim() || 'TamuNumera',
+                            school: offlineSchool.trim() || undefined,
                             grade: selectedGrade || 1,
                             avatar: selectedAvatar || 'niko',
                             xp: 0,
@@ -934,6 +937,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onAdminLogin })
                           const guestProfile: PlayerProfile = {
                             id: 'offline_' + Math.random().toString(36).substring(2, 9),
                             name: name.trim() || 'TamuNumera',
+                            school: offlineSchool.trim() || undefined,
                             grade: selectedGrade || 1,
                             avatar: selectedAvatar || 'niko',
                             xp: 0,
@@ -1201,6 +1205,22 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onAdminLogin })
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         placeholder="Contoh: KsatriaAritmatika"
+                        className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-xl py-3 px-4 text-sm font-bold text-white placeholder-slate-500 outline-none transition-all shadow-inner"
+                      />
+                    </div>
+
+                    {/* INPUT NAMA SEKOLAH */}
+                    <div className="space-y-1.5">
+                      <label className="block text-slate-300 font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
+                        <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
+                        Dari Mana Asal Sekolahmu?
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={30}
+                        value={offlineSchool}
+                        onChange={(e) => setOfflineSchool(e.target.value)}
+                        placeholder="Contoh: UPT SDN Karanganyar"
                         className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-xl py-3 px-4 text-sm font-bold text-white placeholder-slate-500 outline-none transition-all shadow-inner"
                       />
                     </div>
