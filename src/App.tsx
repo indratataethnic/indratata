@@ -160,13 +160,13 @@ export default function App() {
           }
         }
       } else {
-        // Pengguna tidak masuk Firebase Auth (bisa jadi bermain dalam mode tanpa akun / offline)
+        // Pengguna tidak masuk Firebase Auth (bisa jadi bermain dalam mode tanpa akun / offline / akun sekolah cloud)
         const localStored = localStorage.getItem('numeraverse_player_profile');
         if (localStored) {
           try {
             const parsed = JSON.parse(localStored);
-            if (parsed && parsed.id && parsed.id.startsWith('offline_')) {
-              // Pengguna bermain dalam mode tanpa akun, biarkan masuk ke lobby dengan data ter-restore!
+            if (parsed && parsed.id && (parsed.id.startsWith('offline_') || parsed.id.startsWith('school_'))) {
+              // Pengguna bermain dalam mode tanpa akun atau akun sekolah cloud, biarkan masuk ke lobby dengan data ter-restore!
               setProfile(parsed);
               setCurrentView('lobby');
               setIsLoadingAuth(false);

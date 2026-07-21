@@ -127,7 +127,9 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ profile, onUpdateP
               <p className="text-[8px] text-slate-400 mt-1 leading-tight font-bold">
                 {profile.id.startsWith('offline_')
                   ? 'Simpan kode ini untuk memulihkan seluruh level dan koin Anda kapan pun jika berganti browser!'
-                  : 'Sesi otomatis tercadangkan menggunakan Akun Google.'
+                  : profile.id.startsWith('school_')
+                    ? 'Sesi otomatis tercadangkan menggunakan Akun Cloud Sekolah.'
+                    : 'Sesi otomatis tercadangkan menggunakan Akun Google.'
                 }
               </p>
             </div>

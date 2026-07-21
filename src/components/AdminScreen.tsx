@@ -1109,6 +1109,11 @@ function doPost(e) {
                                 Tamu
                               </span>
                             )}
+                            {player.id.startsWith('school_') && (
+                              <span className="text-[8px] bg-violet-600/20 text-violet-300 font-black px-1.5 py-0.5 rounded uppercase border border-violet-500/20">
+                                Cloud
+                              </span>
+                            )}
                             {isDemo && (
                               <span className="text-[8px] bg-amber-500/10 text-amber-300 font-bold px-1.5 py-0.5 rounded uppercase border border-amber-500/20">
                                 Demo
@@ -1117,7 +1122,7 @@ function doPost(e) {
                           </div>
                           <span className="text-[10px] text-slate-400 font-bold flex items-center gap-1 mt-0.5 truncate">
                             <MapPin className="w-2.5 h-2.5 text-indigo-400 shrink-0" />
-                            {player.school || 'Belum mengisi asal sekolah'}
+                            {player.id.startsWith('school_') ? player.id.substring(7) : (player.school || 'Belum mengisi asal sekolah')}
                           </span>
                         </div>
                       </div>

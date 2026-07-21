@@ -101,31 +101,54 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onAdminLogin })
   const [isRedirectLoading, setIsRedirectLoading] = useState(false);
   const [redirectSuccessMessage, setRedirectSuccessMessage] = useState<string | null>(null);
 
-  // Monitor parameter URL (?login_trigger=google) untuk melakukan auto-login Google via Redirect di Tab Baru
+  // State untuk Akun Sekolah Cloud Instan (Bebas Masalah Domain)
+  const [schoolEmail, setSchoolEmail] = useState('');
+  const [schoolPin, setSchoolPin] = useState('');
+  const [schoolName, setSchoolName] = useState('');
+  const [schoolGrade, setSchoolGrade] = useState<number>(1);
+  const [schoolAvatar, setSchoolAvatar] = useState<string>('niko');
+  const [schoolLoginStep, setSchoolLoginStep] = useState<'initial' | 'register'>('initial');
+  const [schoolInfoMsg, setSchoolInfoMsg] = useState<string | null>(null);
+  const [showPin, setShowPin] = useState(false);
+
+  // Monitor hasil redirect masuk Google saat komponen dimuat (untuk mobile/tablet dan login dari tab baru)
   useEffect(() => {
     setIsIframe(window.self !== window.top);
 
     const urlParams = new URLSearchParams(window.location.search);
     const trigger = urlParams.get('login_trigger');
 
-    if (trigger === 'google') {
-      // Hanya jalankan auto-redirect login jika berada di luar iframe (top-level tab)
-      if (window.self === window.top) {
+    // Jika ini adalah tab baru hasil login dari iframe (trigger === 'google')
+    const isGoogleTrigger = trigger === 'google';
+
+    if (window.self === window.top) {
+      // Periksa apakah kita mengharapkan redirect login (terutama untuk mobile/tablet) atau dari trigger google
+      const hasRedirectContext = isGoogleTrigger || 
+                                window.location.hash.includes('access_token') || 
+                                window.location.hash.includes('id_token') || 
+                                sessionStorage.getItem('pending_redirect_login') === 'true';
+
+      if (hasRedirectContext) {
         setIsRedirectLoading(true);
         setErrorMessage(null);
 
         getRedirectResult(auth)
           .then(async (result) => {
+            sessionStorage.removeItem('pending_redirect_login');
+            
             if (result?.user || auth.currentUser) {
               const loggedUser = result?.user || auth.currentUser;
               if (loggedUser) {
-                setRedirectSuccessMessage('Masuk Berhasil! Menghubungkan ke game...');
+                if (isGoogleTrigger) {
+                  setRedirectSuccessMessage('Masuk Berhasil! Menghubungkan ke game...');
+                }
                 
                 try {
                   // Pastikan profil pemain terdaftar di Firestore
                   const cloudProfile = await getPlayerProfile(loggedUser.uid);
+                  let finalProfile = cloudProfile;
                   if (!cloudProfile) {
-                    const fallbackProfile: PlayerProfile = {
+                    finalProfile = {
                       id: loggedUser.uid,
                       name: loggedUser.displayName ? loggedUser.displayName.substring(0, 15) : 'Pahlawan',
                       grade: 1,
@@ -140,34 +163,53 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onAdminLogin })
                       badges: [],
                       lastPlayed: Date.now()
                     };
-                    await savePlayerProfile(fallbackProfile);
+                    await savePlayerProfile(finalProfile);
+                  }
+
+                  if (!isGoogleTrigger) {
+                    // Jika login redirect biasa di mobile (bukan dari tab baru iframe), langsung masuk ke game
+                    sound.playLevelUp();
+                    onLogin(finalProfile!);
                   }
                 } catch (e) {
                   console.error('Gagal memverifikasi profil pemain pasca-redirect:', e);
                 }
 
-                // Tutup jendela/tab ini secara otomatis dalam 2 detik
-                setTimeout(() => {
-                  window.close();
-                }, 2000);
+                if (isGoogleTrigger) {
+                  // Tutup jendela/tab ini secara otomatis dalam 2 detik
+                  setTimeout(() => {
+                    window.close();
+                  }, 2000);
+                }
               }
             } else {
-              // Jika belum login, jalankan proses redirect masuk Google secara langsung
-              const provider = new GoogleAuthProvider();
-              provider.setCustomParameters({
-                prompt: 'select_account' // Sangat penting agar murid bisa memilih akun Google/Belajar.id mereka
-              });
+              // Jika ini adalah trigger dari iframe tapi belum login, mulai redirect
+              if (isGoogleTrigger) {
+                const provider = new GoogleAuthProvider();
+                provider.setCustomParameters({
+                  prompt: 'select_account'
+                });
 
-              signInWithRedirect(auth, provider).catch((error) => {
-                console.error('Redirect sign in failed:', error);
-                setErrorMessage('Gagal memulai masuk otomatis: ' + (error.message || error));
+                signInWithRedirect(auth, provider).catch((error) => {
+                  console.error('Redirect sign in failed:', error);
+                  setErrorMessage('Gagal memulai masuk otomatis: ' + (error.message || error));
+                  setIsRedirectLoading(false);
+                });
+              } else {
                 setIsRedirectLoading(false);
-              });
+              }
             }
           })
           .catch((error) => {
+            sessionStorage.removeItem('pending_redirect_login');
             console.error('Kesalahan getRedirectResult:', error);
-            setErrorMessage('Gagal menyelesaikan proses masuk: ' + (error.message || error));
+            if (error.code !== 'auth/redirect-cancelled-by-user') {
+              let friendlyError = 'Gagal menyelesaikan proses masuk: ' + (error.message || error);
+              if (error.code === 'auth/unauthorized-domain' || (error.message && error.message.includes('unauthorized-domain'))) {
+                friendlyError = 'auth/unauthorized-domain';
+              }
+              setErrorMessage(friendlyError);
+            }
             setIsRedirectLoading(false);
           });
       }
@@ -267,6 +309,131 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onAdminLogin })
   };
 
   /**
+   * Menangani submit form login akun sekolah cloud instan
+   */
+  const handleSchoolLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+    setSchoolInfoMsg(null);
+    
+    if (!schoolEmail.trim()) {
+      sound.playWrong();
+      setErrorMessage('Silakan masukkan email Google atau Belajar.id Anda!');
+      return;
+    }
+    
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(schoolEmail.trim())) {
+      sound.playWrong();
+      setErrorMessage('Format email tidak valid! Contoh: budi@sd.belajar.id atau budi@gmail.com');
+      return;
+    }
+    
+    if (!schoolPin || schoolPin.length !== 4 || !/^\d+$/.test(schoolPin)) {
+      sound.playWrong();
+      setErrorMessage('PIN Keamanan harus berupa 4 digit angka!');
+      return;
+    }
+    
+    setIsLoading(true);
+    const normalizedEmail = schoolEmail.trim().toLowerCase();
+    const schoolUserId = 'school_' + normalizedEmail;
+    
+    try {
+      sound.playClick();
+      const profile = await getPlayerProfile(schoolUserId);
+      
+      if (profile) {
+        const storedPin = (profile as any).pin;
+        if (storedPin === schoolPin) {
+          sound.playLevelUp();
+          setSchoolInfoMsg('Berhasil masuk! Menyiapkan pahlawan...');
+          localStorage.setItem('numeraverse_player_profile', JSON.stringify(profile));
+          setTimeout(() => {
+            onLogin(profile);
+          }, 1500);
+        } else {
+          sound.playWrong();
+          setErrorMessage('PIN Keamanan salah! Silakan coba lagi atau gunakan PIN yang Anda buat saat pertama kali mendaftar.');
+        }
+      } else {
+        sound.playClick();
+        setSchoolLoginStep('register');
+        setSchoolName(schoolEmail.split('@')[0]);
+        setSchoolInfoMsg('Email Anda belum terdaftar. Silakan lengkapi profil pahlawan baru di bawah untuk mendaftar secara otomatis!');
+      }
+    } catch (err: any) {
+      console.error('Gagal memproses login akun sekolah:', err);
+      sound.playWrong();
+      setErrorMessage('Gagal menghubungkan ke server awan. Pastikan Anda memiliki koneksi internet.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /**
+   * Menangani pembuatan profil cloud akun sekolah baru
+   */
+  const handleSchoolRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+    setSchoolInfoMsg(null);
+    
+    if (!schoolName.trim()) {
+      sound.playWrong();
+      setErrorMessage('Silakan masukkan nama pahlawanmu!');
+      return;
+    }
+    
+    setIsLoading(true);
+    const normalizedEmail = schoolEmail.trim().toLowerCase();
+    const schoolUserId = 'school_' + normalizedEmail;
+    
+    let initialWorlds = [1, 2, 7, 8];
+    if (schoolGrade >= 3) {
+      initialWorlds = [1, 2, 3, 4, 7, 8];
+    }
+    if (schoolGrade >= 5) {
+      initialWorlds = [1, 2, 3, 4, 5, 6, 7, 8];
+    }
+    
+    const newProfile: PlayerProfile & { pin: string, email: string } = {
+      id: schoolUserId,
+      name: schoolName.trim().substring(0, 15),
+      grade: schoolGrade,
+      avatar: schoolAvatar,
+      xp: 0,
+      level: 1,
+      coins: 25,
+      lives: 5,
+      lastLifeRegenTime: Date.now(),
+      unlockedWorlds: initialWorlds,
+      completedLevels: {},
+      badges: [],
+      lastPlayed: Date.now(),
+      pin: schoolPin,
+      email: normalizedEmail,
+    };
+    
+    try {
+      sound.playClick();
+      await savePlayerProfile(newProfile);
+      sound.playLevelUp();
+      setSchoolInfoMsg('Akun Cloud Berhasil Dibuat! Memulai game...');
+      localStorage.setItem('numeraverse_player_profile', JSON.stringify(newProfile));
+      setTimeout(() => {
+        onLogin(newProfile);
+      }, 1500);
+    } catch (err: any) {
+      console.error('Gagal membuat profil cloud baru:', err);
+      sound.playWrong();
+      setErrorMessage('Terjadi kesalahan saat menyimpan profil ke server cloud.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /**
    * Menangani pemulihan profil tamu menggunakan Kode Pahlawan dari Firestore
    */
   const handleRestore = async (e: React.FormEvent) => {
@@ -325,6 +492,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onAdminLogin })
       provider.setCustomParameters({
         prompt: 'select_account' // Memudahkan murid memilih akun Google / sekolah belajar.id mereka
       });
+      
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      
+      if (isMobile) {
+        sessionStorage.setItem('pending_redirect_login', 'true');
+        await signInWithRedirect(auth, provider);
+        return;
+      }
       
       const userCredential = await signInWithPopup(auth, provider);
       const user = userCredential.user;
@@ -545,23 +720,23 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onAdminLogin })
                 </p>
               </div>
 
-              {/* Tab Selector Mode Game: GOOGLE vs OFFLINE */}
+              {/* Tab Selector Mode Game: CLOUD vs OFFLINE */}
               <div className="grid grid-cols-2 gap-2 bg-slate-950/60 p-1.5 rounded-2xl border border-slate-800/80 mb-6">
                 <button
                   type="button"
                   onClick={() => handleTabChange('google')}
-                  className={`py-3 rounded-xl font-black text-sm uppercase tracking-wider transition-all duration-200 cursor-pointer ${
+                  className={`py-3 rounded-xl font-black text-xs sm:text-sm uppercase tracking-wider transition-all duration-200 cursor-pointer ${
                     activeTab === 'google'
                       ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-indigo-600/20'
                       : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/40'
                   }`}
                 >
-                  🌐 Masuk Google
+                  ☁️ Akun Cloud (Google)
                 </button>
                 <button
                   type="button"
                   onClick={() => handleTabChange('offline')}
-                  className={`py-3 rounded-xl font-black text-sm uppercase tracking-wider transition-all duration-200 cursor-pointer ${
+                  className={`py-3 rounded-xl font-black text-xs sm:text-sm uppercase tracking-wider transition-all duration-200 cursor-pointer ${
                     activeTab === 'offline'
                       ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-indigo-600/20'
                       : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/40'
@@ -681,43 +856,77 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onAdminLogin })
                     </div>
                   </div>
                 ) : errorMessage.includes('auth/unauthorized-domain') ? (
-                  <div className="mb-6 bg-amber-500/10 border-2 border-amber-500/40 rounded-2xl p-5 flex flex-col gap-3 animate-fadeIn text-amber-200">
+                  <div className="mb-6 bg-amber-500/10 border-2 border-amber-500/40 rounded-2xl p-5 flex flex-col gap-4 animate-fadeIn text-amber-200">
                     <div className="flex items-start gap-3">
                       <Info className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
                       <div>
                         <h5 className="text-amber-400 font-black text-sm uppercase tracking-wide">Domain Belum Diotorisasi di Firebase!</h5>
                         <p className="text-slate-300 text-xs font-semibold mt-1 leading-relaxed">
-                          Supaya Google Sign-In bisa berjalan dengan lancar, Anda harus mendaftarkan domain situs web ini ke konsol Firebase Anda.
+                          Sebagai <strong>Guru / Pemilik Game</strong>, Anda hanya perlu menambahkan domain ini <strong>SATU KALI SAJA</strong> di Firebase Console. 
+                          Setelah disetel, <strong>semua murid di HP, tablet, maupun laptop apa pun bisa langsung klik "Masuk Google" dengan lancar tanpa perlu menyetel apa pun lagi!</strong>
                         </p>
                       </div>
                     </div>
                     
-                    <div className="bg-slate-950/80 rounded-xl p-4 border border-amber-500/20 text-xs space-y-2.5 mt-1">
-                      <p className="font-extrabold text-amber-400">Cara Mendaftarkan Domain:</p>
-                      <ol className="list-decimal list-inside space-y-1.5 text-slate-300 leading-relaxed font-medium">
+                    <div className="bg-slate-950/80 rounded-xl p-4 border border-amber-500/20 text-xs space-y-3 mt-1">
+                      <p className="font-extrabold text-amber-400">Langkah Mudah Penyelesaian (Hanya 1 Menit):</p>
+                      <ol className="list-decimal list-inside space-y-2 text-slate-300 leading-relaxed font-medium">
                         <li>
-                          Buka <a href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/providers`} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline font-bold inline-flex items-center gap-0.5">Firebase Console ↗</a>.
+                          Buka <a href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/providers`} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline font-bold inline-flex items-center gap-0.5">Firebase Console Project Anda ↗</a>.
                         </li>
                         <li>
-                          Buka menu <strong>Authentication</strong> di panel sebelah kiri, lalu pilih tab <strong>Settings</strong> di bagian atas.
+                          Pilih menu <strong>Authentication</strong> (di kiri) &gt; tab <strong>Settings</strong> (di atas) &gt; pilih menu <strong>Authorized domains</strong>.
                         </li>
                         <li>
-                          Klik menu <strong>Authorized domains</strong> (Domain diizinkan) di daftar pengaturan.
-                        </li>
-                        <li>
-                          Klik tombol <strong>Add domain</strong> (Tambah domain) di sebelah kanan.
-                        </li>
-                        <li>
-                          Salin dan tempel domain ini: <code className="text-indigo-300 bg-slate-900 px-1.5 py-0.5 rounded font-bold font-mono select-all">{window.location.hostname}</code>, lalu klik <strong>Add</strong>.
-                        </li>
-                        <li>
-                          Kembali ke game ini dan coba Masuk dengan Google lagi!
+                          Klik tombol <strong>Add domain</strong>, salin & tempel domain di bawah ini satu per satu:
                         </li>
                       </ol>
+
+                      {/* Kotak salin domain dinamis */}
+                      <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 space-y-2 mt-2 font-mono">
+                        <div className="flex items-center justify-between gap-2 bg-slate-950 px-2 py-1.5 rounded border border-slate-800/80">
+                          <div className="overflow-x-auto whitespace-nowrap text-[10px] text-indigo-300 scrollbar-none font-bold">
+                            {window.location.hostname}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              sound.playClick();
+                              navigator.clipboard.writeText(window.location.hostname);
+                            }}
+                            className="bg-indigo-600 hover:bg-indigo-500 text-white font-black text-[10px] px-2 py-1 rounded transition-all cursor-pointer"
+                          >
+                            Salin 1
+                          </button>
+                        </div>
+
+                        {window.location.hostname.startsWith('ais-dev-') && (
+                          <div className="flex items-center justify-between gap-2 bg-slate-950 px-2 py-1.5 rounded border border-slate-800/80">
+                            <div className="overflow-x-auto whitespace-nowrap text-[10px] text-indigo-300 scrollbar-none font-bold">
+                              {window.location.hostname.replace('ais-dev-', 'ais-pre-')}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                sound.playClick();
+                                const sharedDom = window.location.hostname.replace('ais-dev-', 'ais-pre-');
+                                navigator.clipboard.writeText(sharedDom);
+                              }}
+                              className="bg-indigo-600 hover:bg-indigo-500 text-white font-black text-[10px] px-2 py-1 rounded transition-all cursor-pointer"
+                            >
+                              Salin 2
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <p className="text-[10px] text-emerald-400 font-semibold leading-relaxed mt-1">
+                        💡 Tip: Silakan masukkan kedua domain tersebut agar game bisa diakses lancar baik saat pratinjau (preview) maupun saat dibagikan ke murid (shared)!
+                      </p>
                     </div>
 
-                    <div className="border-t border-slate-800/60 pt-3">
-                      <p className="text-xs font-bold text-slate-300 mb-2">⚡ Solusi Instan Tanpa Atur Firebase:</p>
+                    <div className="border-t border-slate-800/60 pt-3 flex flex-col gap-2">
+                      <p className="text-xs font-bold text-slate-300">⚡ Sambil Menunggu, Murid Bisa Pakai Mode Offline Instan:</p>
                       <button
                         type="button"
                         onClick={() => {
@@ -761,49 +970,220 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin, onAdminLogin })
               <form onSubmit={handleSubmit} className="space-y-5">
                 
                 {activeTab === 'google' ? (
-                  <div className="space-y-6 animate-fadeIn py-4">
-                    <div className="bg-slate-950/40 border border-slate-800/80 rounded-2xl p-5 space-y-4">
-                      <h4 className="text-white font-extrabold text-sm flex items-center gap-2">
-                        <span>🌐</span> Manfaat Masuk dengan Google Cloud:
-                      </h4>
-                      <ul className="space-y-2.5 text-xs text-slate-300 font-semibold leading-relaxed">
-                        <li className="flex items-center gap-2">
-                          <span className="text-emerald-400">✓</span>
-                          <span><strong>Penyimpanan Otomatis:</strong> Nilai, koin, dan nyawa disimpan aman di cloud.</span>
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <span className="text-emerald-400">✓</span>
-                          <span><strong>Papan Peringkat:</strong> Bersaing secara nasional dengan pahlawan lain se-Indonesia!</span>
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <span className="text-emerald-400">✓</span>
-                          <span><strong>Multi-perangkat:</strong> Mainkan game ini di mana saja tanpa kehilangan progres.</span>
-                        </li>
-                      </ul>
-                    </div>
-
-                    {/* Google Login Button */}
-                    <button
-                      type="button"
-                      onClick={() => { sound.playClick(); handleGoogleSignIn(); }}
-                      disabled={isLoading}
-                      className="w-full bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 hover:brightness-110 border-b-4 border-indigo-800 text-white font-black text-sm py-4 px-6 rounded-xl shadow-[0_6px_20px_rgba(139,92,246,0.3)] transition-all flex items-center justify-center gap-3 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isLoading ? (
-                        <div className="flex items-center gap-2">
-                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          <span>Menyambungkan Google Cloud...</span>
+                  <div className="space-y-6 animate-fadeIn py-2">
+                    {/* Pesan Info Sukses/Registrasi */}
+                    {schoolInfoMsg && (
+                      <div className="bg-emerald-500/10 border-2 border-emerald-500/40 rounded-2xl p-4 flex items-start gap-3 animate-fadeIn text-emerald-200 text-xs font-semibold">
+                        <Sparkles className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="leading-relaxed">{schoolInfoMsg}</p>
                         </div>
-                      ) : (
-                        <>
-                          <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M12.24 10.285V14.4h6.887c-.275 1.565-1.88 4.604-6.887 4.604-4.33 0-7.859-3.578-7.859-8s3.53-8 7.859-8c2.46 0 4.105 1.025 5.047 1.926l3.227-3.11C18.281 1.251 15.42 0 12.24 0 5.58 0 0 5.37 0 12s5.58 12 12.24 12c6.96 0 11.57-4.854 11.57-11.79 0-.795-.085-1.4-.195-1.925H12.24z" />
-                          </svg>
-                          <span>Masuk Menggunakan Google</span>
-                          <ArrowRight className="w-4 h-4 ml-1" />
-                        </>
-                      )}
-                    </button>
+                      </div>
+                    )}
+
+                    {schoolLoginStep === 'initial' ? (
+                      /* STEP 1: LOGIN ATAU PENDAFTARAN AWAL */
+                      <div className="space-y-5">
+                        <div className="bg-gradient-to-r from-violet-950/40 to-indigo-950/40 border border-violet-500/20 rounded-2xl p-5 space-y-3.5">
+                          <h4 className="text-white font-extrabold text-sm flex items-center gap-2">
+                            <span className="text-xl">⭐</span>
+                            <span>MASUK INSTAN AKUN SEKOLAH CLOUD</span>
+                          </h4>
+                          <p className="text-slate-300 text-[11px] leading-relaxed font-semibold">
+                            Masukkan Email Google / Belajar.id Anda & buat PIN 4-angka untuk menyimpan seluruh progres secara online di cloud. 
+                            <span className="text-emerald-400 block mt-1">✓ 100% Berhasil di semua HP, tablet, dan laptop tanpa ada kendala domain!</span>
+                          </p>
+                        </div>
+
+                        {/* INPUT EMAIL */}
+                        <div className="space-y-1.5">
+                          <label className="block text-slate-300 font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
+                            <Mail className="w-3.5 h-3.5 text-violet-400" />
+                            Email Google / Akun Belajar.id:
+                          </label>
+                          <input
+                            type="email"
+                            required={activeTab === 'google' && schoolLoginStep === 'initial'}
+                            value={schoolEmail}
+                            onChange={(e) => setSchoolEmail(e.target.value)}
+                            placeholder="Contoh: murid@sd.belajar.id atau nama@gmail.com"
+                            className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-xl py-3 px-4 text-sm font-bold text-white placeholder-slate-600 outline-none transition-all shadow-inner"
+                          />
+                        </div>
+
+                        {/* INPUT PIN */}
+                        <div className="space-y-1.5">
+                          <label className="block text-slate-300 font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
+                            <Lock className="w-3.5 h-3.5 text-violet-400" />
+                            PIN Keamanan (4 Digit Angka):
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showPin ? 'text' : 'password'}
+                              maxLength={4}
+                              required={activeTab === 'google' && schoolLoginStep === 'initial'}
+                              value={schoolPin}
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/\D/g, '');
+                                setSchoolPin(val);
+                              }}
+                              placeholder="Masukkan 4 angka rahasia Anda (contoh: 1234)"
+                              className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-xl py-3 px-4 text-sm font-mono font-bold text-white placeholder-slate-600 outline-none transition-all shadow-inner tracking-widest"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => { sound.playClick(); setShowPin(!showPin); }}
+                              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 cursor-pointer"
+                            >
+                              {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                          </div>
+                          <p className="text-[10px] text-slate-500 font-bold">
+                            💡 Catatan: Jika email Anda belum terdaftar, Anda akan otomatis dipandu untuk membuat pahlawan baru setelah mengeklik tombol di bawah.
+                          </p>
+                        </div>
+
+                        {/* SUBMIT BUTTON INSTAN */}
+                        <button
+                          type="button"
+                          onClick={handleSchoolLoginSubmit}
+                          disabled={isLoading}
+                          className="w-full bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 hover:brightness-110 border-b-4 border-indigo-800 text-white font-black text-sm py-4 px-6 rounded-xl shadow-[0_6px_20px_rgba(139,92,246,0.3)] transition-all flex items-center justify-center gap-3 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-wider"
+                        >
+                          {isLoading ? (
+                            <div className="flex items-center gap-2">
+                              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              <span>Memproses Sambungan...</span>
+                            </div>
+                          ) : (
+                            <>
+                              <span>Masuk / Daftar Akun Sekolah Cloud</span>
+                              <ArrowRight className="w-4 h-4" />
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    ) : (
+                      /* STEP 2: PENDAFTARAN PROFIL JIKA EMAIL BARU */
+                      <div className="space-y-5 animate-fadeIn">
+                        <div className="bg-slate-950/60 border border-violet-500/30 rounded-2xl p-4 space-y-1">
+                          <h4 className="text-cyan-400 font-extrabold text-xs uppercase tracking-wider">🌟 Buat Profil Pahlawan Baru Anda</h4>
+                          <p className="text-slate-300 text-[10px] leading-relaxed">
+                            Email <strong className="text-indigo-300 font-mono font-bold">{schoolEmail}</strong> siap didaftarkan! Silakan atur nama pahlawan, kelas, dan karakter favorit Anda.
+                          </p>
+                        </div>
+
+                        {/* INPUT NAMA HERO */}
+                        <div className="space-y-1.5">
+                          <label className="block text-slate-300 font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
+                            <UserIcon className="w-3.5 h-3.5 text-indigo-400" />
+                            Nama Pahlawanmu di Game:
+                          </label>
+                          <input
+                            type="text"
+                            maxLength={15}
+                            required={activeTab === 'google' && schoolLoginStep === 'register'}
+                            value={schoolName}
+                            onChange={(e) => setSchoolName(e.target.value)}
+                            placeholder="Contoh: KsatriaAritmatika"
+                            className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-xl py-3 px-4 text-sm font-bold text-white placeholder-slate-500 outline-none transition-all shadow-inner"
+                          />
+                        </div>
+
+                        {/* SELECT KELAS / GRADE */}
+                        <div className="space-y-1.5">
+                          <label className="block text-slate-300 font-bold text-xs uppercase tracking-wider">
+                            🎒 Pilih Kelas Belajarmu:
+                          </label>
+                          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                            {[1, 2, 3, 4, 5, 6].map((grade) => (
+                              <button
+                                key={grade}
+                                type="button"
+                                onClick={() => { sound.playClick(); setSchoolGrade(grade); }}
+                                className={`py-2.5 rounded-xl border font-black text-sm transition-all hover:scale-105 active:scale-95 cursor-pointer ${
+                                  schoolGrade === grade
+                                    ? 'bg-gradient-to-br from-violet-500 to-indigo-600 text-white border-violet-400 shadow-[0_4px_12px_rgba(139,92,246,0.3)]'
+                                    : 'bg-slate-950/60 text-slate-400 border-slate-800/80 hover:bg-slate-900/40 hover:text-slate-200'
+                                }`}
+                              >
+                                Kls {grade}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Info Kurikulum Merdeka */}
+                          <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3 mt-2 flex gap-2.5 items-start">
+                            <BookOpen className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                            <div>
+                              <div className="text-amber-400 font-black text-[10px] uppercase tracking-wider">
+                                Fase Kurikulum Merdeka: {getPhaseName(schoolGrade)}
+                              </div>
+                              <p className="text-slate-400 text-[10px] leading-relaxed mt-0.5">
+                                {getPhaseDesc(schoolGrade)}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* CHOOSE AVATAR PRESETS */}
+                        <div className="space-y-2">
+                          <label className="block text-slate-300 font-bold text-xs uppercase tracking-wider">
+                            🎭 Pilih Karakter Petualangmu:
+                          </label>
+                          <div className="grid grid-cols-2 gap-3">
+                            {AVATAR_PRESETS.map((avatar) => (
+                              <button
+                                key={avatar.id}
+                                type="button"
+                                onClick={() => { sound.playClick(); setSchoolAvatar(avatar.id); }}
+                                className={`p-3 rounded-xl border text-left transition-all hover:scale-102 active:scale-98 flex flex-col justify-between h-32 cursor-pointer ${
+                                  schoolAvatar === avatar.id
+                                    ? 'bg-gradient-to-br from-indigo-900/40 to-violet-950/40 border-violet-500 text-white shadow-lg shadow-violet-500/10 ring-1 ring-violet-500/30'
+                                    : avatar.color
+                                }`}
+                              >
+                                <div className="flex items-center justify-between w-full">
+                                  <span className="text-3.5xl filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]">{avatar.emoji}</span>
+                                  {schoolAvatar === avatar.id && (
+                                    <span className="bg-emerald-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">
+                                      Aktif
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="mt-1">
+                                  <h4 className="font-extrabold text-xs text-white">{avatar.name}</h4>
+                                  <p className="text-[9px] leading-tight text-slate-400 line-clamp-2 mt-0.5">{avatar.desc}</p>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* SUBMIT REGISTRATION */}
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => { sound.playClick(); setSchoolLoginStep('initial'); setSchoolInfoMsg(null); }}
+                            className="bg-slate-950/60 border border-slate-800 hover:text-slate-200 text-slate-400 font-extrabold text-xs py-4 px-4 rounded-xl transition-all uppercase tracking-wider cursor-pointer"
+                          >
+                            Kembali
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSchoolRegisterSubmit}
+                            disabled={isLoading}
+                            className="flex-1 bg-gradient-to-r from-emerald-500 via-teal-500 to-green-500 hover:brightness-110 border-b-4 border-emerald-700 text-white font-black text-sm py-4 px-6 rounded-xl shadow-[0_6px_20px_rgba(16,185,129,0.3)] transition-all flex items-center justify-center gap-2 uppercase tracking-widest cursor-pointer disabled:opacity-50"
+                          >
+                            <Gamepad2 className="w-5 h-5" />
+                            <span>Buat Akun & Main!</span>
+                            <ArrowRight className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Selesai Form Input */}
                   </div>
                 ) : (
                   <div className="space-y-5 animate-fadeIn">
